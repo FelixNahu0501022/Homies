@@ -134,7 +134,7 @@ export default function DonativoCrearPage({ onClose, onSuccess }) {
     telefono: "",
     direccion: "",
   });
-    // Modal crear tipo de donativo
+  // Modal crear tipo de donativo
   const [openTipo, setOpenTipo] = useState(false);
   const [nuevoTipo, setNuevoTipo] = useState({ nombre: "", codigo: "", descripcion: "" });
 
@@ -197,12 +197,24 @@ export default function DonativoCrearPage({ onClose, onSuccess }) {
   const optionLabel = useMemo(() => (opt) => (typeof opt === "string" ? opt : opt?.nombre ?? ""), []);
 
   // Si el usuario selecciona un item existente vs. escribe texto (nuevo)
-  const handleMaterialChange = (_, value) => {
+  const handleMaterialChange = async (_, value) => {
     if (typeof value === "object" && value && value.iditem) {
       setValue("idItem", value.iditem);
       setValue("descripcion", value.nombre || "");
       setInputMat(value.nombre || "");
-      setShowInvPanel(false); // al elegir existente, ocultar panel inventario
+
+      // Cargar categoría y atributos del material existente
+      if (value.idCategoria || value.idcategoria) {
+        const catId = value.idCategoria || value.idcategoria;
+        setInvData((prev) => ({ ...prev, idCategoria: catId }));
+        try {
+          const at = await listarAtributosCategoria(catId);
+          setAttrsCat(Array.isArray(at) ? at : []);
+        } catch (e) {
+          console.error(e);
+          setAttrsCat([]);
+        }
+      }
     } else {
       // texto libre => material nuevo
       setValue("idItem", "");
@@ -346,8 +358,34 @@ export default function DonativoCrearPage({ onClose, onSuccess }) {
         }
         payload.cantidad = cant;
 
-        if (form.idItem) {
-          // Material existente: sumar stock al item
+        if (form.idItem && showInvPanel && invData.idCategoria) {
+          // Material existente CON especificaciones → crear variante nueva
+          const espec = invData.especificaciones || {};
+          const onlyIncluded = {};
+          Object.keys(espec).forEach((k) => {
+            if (selectedSpecs[k]) {
+              onlyIncluded[k] = espec[k];
+            }
+          });
+
+          // Si hay especificaciones, crear como variante nueva
+          if (Object.keys(onlyIncluded).length > 0) {
+            const invPayload = {
+              ...invData,
+              nombre: inputMat.trim(),
+              especificaciones: onlyIncluded,
+            };
+            // Normalizar ids vacíos como null
+            ["idCategoria", "idUnidad", "idUbicacion", "idProveedor"].forEach((k) => {
+              if (!invPayload[k]) invPayload[k] = null;
+            });
+            payload.inventarioData = invPayload;
+          } else {
+            // Sin especificaciones, solo sumar stock al existente
+            payload.idItem = Number(form.idItem);
+          }
+        } else if (form.idItem) {
+          // Material existente SIN panel de atributos: sumar stock al item
           payload.idItem = Number(form.idItem);
         } else if (showInvPanel && inputMat.trim()) {
           // Material nuevo: inventarioData via donativos.service → crearDonativo
@@ -621,20 +659,20 @@ export default function DonativoCrearPage({ onClose, onSuccess }) {
                       <Switch
                         checked={showInvPanel}
                         onChange={(_, v) => setShowInvPanel(v)}
-                        disabled={Boolean(watch("idItem")) || !inputMat.trim()}
+                        disabled={!inputMat.trim()}
                       />
                     }
                     label={
                       <Box display="flex" alignItems="center" gap={1} sx={{ flexWrap: "wrap" }}>
-                        Definir atributos de inventario para <strong>{inputMat || "nuevo material"}</strong>
+                        Especificar atributos para <strong>{inputMat || "este material"}</strong>
                         <HelpOutline fontSize="small" />
                       </Box>
                     }
                   />
                 </Grid>
 
-                {/* Panel inventario cuando es nuevo material */}
-                {showInvPanel && !watch("idItem") && (
+                {/* Panel inventario/atributos */}
+                {showInvPanel && (
                   <Grid item xs={12}>
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                       <Typography variant="subtitle1" gutterBottom>

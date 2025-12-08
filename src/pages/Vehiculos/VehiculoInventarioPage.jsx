@@ -13,6 +13,7 @@ import {
   Chip,
   Snackbar,
   Alert,
+  TableContainer,
 } from "@mui/material";
 import { Refresh } from "@mui/icons-material";
 import { useEffect, useMemo, useState } from "react";
@@ -140,32 +141,34 @@ export default function VehiculoInventarioPage() {
         </Box>
       ) : (
         <Paper sx={{ mt: 2, borderRadius: 3, overflow: "hidden" }} elevation={3}>
-          <Table>
-            <TableHead sx={{ backgroundColor: "action.hover" }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>ID Ítem</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Descripción</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Cantidad</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((it, idx) => (
-                <TableRow
-                  key={`${it.iditem || it.idItem || idx}`}
-                  hover
-                  sx={{
-                    "&:last-child td, &:last-child th": { border: 0 },
-                  }}
-                >
-                  <TableCell>{it.iditem ?? it.idItem ?? "—"}</TableCell>
-                  <TableCell>{it.nombre || "—"}</TableCell>
-                  <TableCell>{it.descripcion || "—"}</TableCell>
-                  <TableCell>{it.cantidad ?? it.cant ?? "—"}</TableCell>
+          <TableContainer sx={{ overflowX: "auto" }}>
+            <Table>
+              <TableHead sx={{ backgroundColor: "action.hover" }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>ID Ítem</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Nombre</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Descripción</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Cantidad</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHead>
+              <TableBody>
+                {rows.map((it, idx) => (
+                  <TableRow
+                    key={`${it.iditem || it.idItem || idx}`}
+                    hover
+                    sx={{
+                      "&:last-child td, &:last-child th": { border: 0 },
+                    }}
+                  >
+                    <TableCell>{it.iditem ?? it.idItem ?? "—"}</TableCell>
+                    <TableCell>{it.nombre || "—"}</TableCell>
+                    <TableCell>{it.descripcion || "—"}</TableCell>
+                    <TableCell>{it.cantidad ?? it.cant ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       )}
 

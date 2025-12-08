@@ -1,977 +1,890 @@
-// src/pages/Capacitaciones/ReportesCapacitacionesPage.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/Capacitaciones/ReportesCapacitacionesPage.jsx - PROFESIONAL CON TABS
 import {
-  Box, Paper, Tabs, Tab, Stack, TextField, Button, Typography,
-  Table, TableHead, TableRow, TableCell, TableBody, Divider, Chip, Autocomplete
+  Typography, Paper, Box, Button, TextField, MenuItem, IconButton, CircularProgress, Grid, Tooltip, Tabs, Tab, Autocomplete
 } from "@mui/material";
-import { Search, PictureAsPdf } from "@mui/icons-material";
-import debounce from "lodash.debounce";
+import { useState, useMemo, useEffect } from "react";
+import { ArrowBack, PictureAsPdf, FileDownload, TableChart } from "@mui/icons-material";
+import Swal from "sweetalert2";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { useNavigate } from "react-router-dom";
+
 import {
-  // Participantes (internos/externos)
-  repParticipacionInternos, repCoberturaInternos, repInternosPorClase, repInternosPorGrado, repBrechasInternos,
-  repExternosRanking,
-
-  // Instituciones
-  repInstitucionesRanking, repHistorialInstitucion, buscarInstitucionesCatalogo,
-
-  // Capacitaciones (agregados)
-  repDistribucionPorTitulo, repDistribucionPorTema, repTopCapacitaciones,
-  repSinAsistentes, repContenidosPorCapacitacion, repSeriesMensuales,
-
-  // Certificados
-  repCertificadosEmitidos, repCertificadosPorTipo, repCertificadosPorCapacitacion, repCertificadoBuscarPorSerie,
-
-  // Personas (historial)
-  repHistorialPersona,
-
-  // Catálogos/ayudas
-  buscarPersonalCatalogo, buscarPersonasCatalogo, obtenerCapacitacion,
+  repParticipacionInternos, repCoberturaInternos, repInternosPorClase, repInternosPorGrado,
+  repBrechasInternos, repExternosRanking, repInstitucionesRanking, repHistorialInstitucion,
+  repDistribucionPorTitulo, repDistribucionPorTema, repTopCapacitaciones, repSinAsistentes,
+  repSeriesMensuales, repCertificadosEmitidos, listadoCertificados, repCertificadosPorTipo, repCertificadosPorCapacitacion,
+  repCertificadoBuscarPorSerie, repHistorialPersona, buscarPersonalCatalogo, buscarPersonasCatalogo,
+  buscarInstitucionesCatalogo
 } from "../../services/capacitaciones.service";
 import { exportTablePdf } from "../../utils/pdfExport";
+import { exportToExcel } from "../../utils/exportToExcel";
+import { TablaReporte } from "../../components/reportes";
+import CapacitacionesDashboard from "./CapacitacionesDashboard";
 
-/** Hook simple para rango de fechas (YYYY-MM-DD) */
-function useDateRange() {
-  const [inicio, setInicio] = useState("");
-  const [fin, setFin] = useState("");
-  const isInvalid = useMemo(() => Boolean(inicio && fin && inicio > fin), [inicio, fin]);
-  const params = useMemo(
-    () => (inicio || fin ? { inicio: inicio || undefined, fin: fin || undefined } : {}),
-    [inicio, fin]
-  );
-  return { inicio, fin, setInicio, setFin, isInvalid, params };
-}
-
-function DateFilters({ inicio, fin, setInicio, setFin, onApply }) {
-  return (
-    <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-      <TextField label="Inicio" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} InputLabelProps={{ shrink: true }} size="small" inputProps={{ max: fin || undefined }} />
-      <TextField label="Fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} InputLabelProps={{ shrink: true }} size="small" inputProps={{ min: inicio || undefined }} />
-      <Button variant="contained" startIcon={<Search />} onClick={onApply}>Aplicar</Button>
-      {(inicio || fin) && (
-        <Button variant="text" onClick={() => { setInicio(""); setFin(""); onApply?.(); }}>
-          Limpiar
-        </Button>
-      )}
-    </Stack>
-  );
-}
-
-function SimpleTable({ columns, rows, getKey }) {
-  return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>{columns.map((c) => <TableCell key={c.key} width={c.w}>{c.label}</TableCell>)}</TableRow>
-      </TableHead>
-      <TableBody>
-        {rows.map((r, i) => (
-          <TableRow key={getKey ? getKey(r, i) : i}>
-            {columns.map((c) => (
-              <TableCell key={c.key}>{c.render ? c.render(r[c.key], r) : String(r[c.key] ?? "")}</TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
+// Definición de reportes por categoría
+const REPORTES = {
+  dashboard: {
+    id: 'dashboard',
+    label: 'Panel de Control',
+    descripcion: 'Dashboard ejecutivo con métricas e indicadores clave',
+    categoria: 'resumen'
+  },
+  // PERSONAL INTERNO
+  participacion_internos: {
+    id: 'participacion_internos',
+    label: 'Participación de Personal',
+    descripcion: 'Historial de participación del personal interno',
+    categoria: 'internos',
+    requiereFiltro: 'fechas'
+  },
+  cobertura_internos: {
+    id: 'cobertura_internos',
+    label: 'Cobertura de Capacitaciones',
+    descripcion: 'Porcentaje de personal capacitado',
+    categoria: 'internos',
+    requiereFiltro: 'fechas'
+  },
+  internos_clase: {
+    id: 'internos_clase',
+    label: 'Participación por Clase',
+    descripcion: 'Distribución de capacitaciones por clase de personal',
+    categoria: 'internos',
+    requiereFiltro: 'fechas'
+  },
+  internos_grado: {
+    id: 'internos_grado',
+    label: 'Participación por Grado',
+    descripcion: 'Distribución de capacitaciones por grado',
+    categoria: 'internos',
+    requiereFiltro: 'fechas'
+  },
+  brechas_internos: {
+    id: 'brechas_internos',
+    label: 'Brechas de Capacitación',
+    descripcion: 'Personal sin capacitaciones recientes',
+    categoria: 'internos',
+    requiereFiltro: 'fechas'
+  },
+  historial_persona_interno: {
+    id: 'historial_persona_interno',
+    label: 'Historial por Persona (Interno)',
+    descripcion: 'Historial completo de capacitaciones de un miembro del personal',
+    categoria: 'internos',
+    requiereFiltro: 'persona_interno'
+  },
+  // EXTERNOS E INSTITUCIONES
+  externos_ranking: {
+    id: 'externos_ranking',
+    label: 'Ranking Participación Externa',
+    descripcion: 'Personas externas con mayor participación',
+    categoria: 'externos',
+    requiereFiltro: 'fechas'
+  },
+  instituciones_ranking: {
+    id: 'instituciones_ranking',
+    label: 'Ranking de Instituciones',
+    descripcion: 'Instituciones con mayor participación',
+    categoria: 'externos',
+    requiereFiltro: 'fechas'
+  },
+  historial_institucion: {
+    id: 'historial_institucion',
+    label: 'Historial por Institución',
+    descripcion: 'Capacitaciones relacionadas con una institución',
+    categoria: 'externos',
+    requiereFiltro: 'institucion'
+  },
+  historial_persona_externo: {
+    id: 'historial_persona_externo',
+    label: 'Historial por Persona (Externa)',
+    descripcion: 'Historial completo de capacitaciones de una persona externa',
+    categoria: 'externos',
+    requiereFiltro: 'persona_externo'
+  },
+  // CAPACITACIONES
+  distribucion_titulo: {
+    id: 'distribucion_titulo',
+    label: 'Distribución por Título',
+    descripcion: 'Cantidad de capacitaciones por curso/título',
+    categoria: 'capacitaciones',
+    requiereFiltro: 'ninguno'
+  },
+  distribucion_tema: {
+    id: 'distribucion_tema',
+    label: 'Distribución por Tema',
+    descripcion: 'Cantidad de capacitaciones por tema',
+    categoria: 'capacitaciones',
+    requiereFiltro: 'ninguno'
+  },
+  top_capacitaciones: {
+    id: 'top_capacitaciones',
+    label: 'Top Capacitaciones',
+    descripcion: 'Capacitaciones con mayor cantidad de participantes',
+    categoria: 'capacitaciones',
+    requiereFiltro: 'fechas'
+  },
+  sin_asistentes: {
+    id: 'sin_asistentes',
+    label: 'Capacitaciones Sin Asistentes',
+    descripcion: 'Capacitaciones sin participantes registrados',
+    categoria: 'capacitaciones',
+    requiereFiltro: 'fechas'
+  },
+  series_mensuales: {
+    id: 'series_mensuales',
+    label: 'Serie Mensual',
+    descripcion: 'Evolución temporal de capacitaciones por mes',
+    categoria: 'capacitaciones',
+    requiereFiltro: 'fechas'
+  },
+  // CERTIFICADOS
+  certificados_emitidos: {
+    id: 'certificados_emitidos',
+    label: 'Certificados Emitidos',
+    descripcion: 'Listado de todos los certificados emitidos',
+    categoria: 'certificados',
+    requiereFiltro: 'fechas'
+  },
+  certificados_tipo: {
+    id: 'certificados_tipo',
+    label: 'Certificados por Tipo',
+    descripcion: 'Distribución de certificados por tipo/plantilla',
+    categoria: 'certificados',
+    requiereFiltro: 'fechas'
+  },
+  certificados_capacitacion: {
+    id: 'certificados_capacitacion',
+    label: 'Certificados por Capacitación',
+    descripcion: 'Cantidad de certificados emitidos por capacitación',
+    categoria: 'certificados',
+    requiereFiltro: 'fechas'
+  },
+  buscar_serie: {
+    id: 'buscar_serie',
+    label: 'Buscar por Número de Serie',
+    descripcion: 'Buscar un certificado específico por su número de serie',
+    categoria: 'certificados',
+    requiereFiltro: 'serie'
+  }
+};
 
 export default function ReportesCapacitacionesPage() {
-  // Pestañas
-  const [tab, setTab] = useState("participantes"); // unificado
-  const dr = useDateRange();
+  const navigate = useNavigate();
+  const [tabSeleccionada, setTabSeleccionada] = useState(0);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState("dashboard");
+  const [loading, setLoading] = useState(false);
+  const [datos, setDatos] = useState([]);
+  const [busqueda, setBusqueda] = useState("");
 
-  // ====== Filtro de tipo de capacitación (afecta agregados) ======
-  const [tipoCap, setTipoCap] = useState("titulo"); // "titulo" | "tema"
+  // Filtros
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
+  const [numeroSerie, setNumeroSerie] = useState("");
 
-  // ====== Participantes (selector: internos/externos) ======
-  const [tipoPart, setTipoPart] = useState("internos"); // "internos" | "externos"
+  // Persona interno
+  const [personalOpt, setPersonalOpt] = useState([]);
+  const [personaInternoSel, setPersonaInternoSel] = useState(null);
+  const [loadingPersonal, setLoadingPersonal] = useState(false);
 
-  // INTERNOS
-  const [internosRank, setInternosRank] = useState([]);
-  const [cobertura, setCobertura]       = useState(null);
-  const [clase, setClase]               = useState([]);
-  const [grado, setGrado]               = useState([]);
-  const [brechas, setBrechas]           = useState([]);
+  // Persona externo
+  const [personasOpt, setPersonasOpt] = useState([]);
+  const [personaExternoSel, setPersonaExternoSel] = useState(null);
+  const [loadingPersonas, setLoadingPersonas] = useState(false);
 
-  // EXTERNOS
-  const [extRank, setExtRank]           = useState([]);
+  // Institución
+  const [institucionesOpt, setInstitucionesOpt] = useState([]);
+  const [institucionSel, setInstitucionSel] = useState(null);
+  const [loadingInstituciones, setLoadingInstituciones] = useState(false);
 
-  // INSTITUCIONES
-  const [instRank, setInstRank]         = useState([]);
-  const [instSearch, setInstSearch]     = useState("");
-  const [instOptions, setInstOptions]   = useState([]);
-  const [instSel, setInstSel]           = useState(null);
-  const [instHist, setInstHist]         = useState([]);
-  const [instTried, setInstTried]       = useState(false);
-  // CAPACITACIONES
-  const [distTitulo, setDistTitulo]     = useState([]);
-  const [distTema, setDistTema]         = useState([]);
-  const [topCaps, setTopCaps]           = useState([]);
-  const [sinAsist, setSinAsist]         = useState([]);
-  const [conts, setConts]               = useState([]);
-  const [series, setSeries]             = useState([]);
-
-  // CERTIFICADOS
-  const [certSerie, setCertSerie]       = useState("");
-  const [certFound, setCertFound]       = useState(null);
-  const [certEmit, setCertEmit]         = useState([]);
-  const [certTipo, setCertTipo]         = useState([]);
-  const [certCap,  setCertCap]          = useState([]);
-
-  // PERSONAS
-  const [perTipo, setPerTipo] = useState("interno"); // "interno" | "externo"
-  const [perSearch, setPerSearch] = useState("");
-  const [perOptions, setPerOptions] = useState([]);
-  const [perSel, setPerSel] = useState(null);
-  const [perHist, setPerHist] = useState([]);
-
-  // 🔎 Cache local de títulos por idcapacitacion para evitar mostrar IDs
-  const [capTitles, setCapTitles] = useState({}); // { [id:number]: string }
-  const loadingTitlesRef = useRef(new Set());
-
-  const ensureCapTitles = async (ids = []) => {
-    const missing = ids.filter((id) => id && !capTitles[id] && !loadingTitlesRef.current.has(id));
-    if (missing.length === 0) return;
-    missing.forEach((id) => loadingTitlesRef.current.add(id));
+  // Cargar catálogos cuando se necesiten
+  const cargarPersonal = async (search = "") => {
+    setLoadingPersonal(true);
     try {
-      const results = await Promise.all(missing.map((id) => obtenerCapacitacion(id).catch(() => null)));
-      const toAdd = {};
-      results.forEach((cap) => {
-        if (!cap) return;
-        const id = Number(cap.idcapacitacion ?? cap.idCapacitacion ?? cap.id);
-        const title = cap.titulo_resuelto || cap.titulo || "(Capacitación)";
-        if (id) toAdd[id] = title;
-      });
-      if (Object.keys(toAdd).length) setCapTitles((prev) => ({ ...prev, ...toAdd }));
+      const data = await buscarPersonalCatalogo({ search, limit: 50 });
+      setPersonalOpt(data || []);
+    } catch (e) {
+      console.error("Error cargando personal:", e);
     } finally {
-      missing.forEach((id) => loadingTitlesRef.current.delete(id));
+      setLoadingPersonal(false);
     }
   };
 
-  // Helpers para limpiar
-  const clearInternos = () => { setInternosRank([]); setCobertura(null); setClase([]); setGrado([]); setBrechas([]); };
-  const clearExternos = () => setExtRank([]);
-  const clearInst     = () => { setInstRank([]); setInstHist([]); };
-  const clearCaps     = () => { setDistTitulo([]); setDistTema([]); setTopCaps([]); setSinAsist([]); setConts([]); setSeries([]); };
-  const clearCerts    = () => { setCertEmit([]); setCertTipo([]); setCertCap([]); };
-  const clearPer      = () => setPerHist([]);
-
-  // ====== Cargas ======
-  // Participantes → Internos
-  const applyInternos = async () => {
-    if (dr.isInvalid) return clearInternos();
-    const p = dr.params;
+  const cargarPersonasExternas = async (search = "") => {
+    setLoadingPersonas(true);
     try {
-      const [rank, cov, cl, gr, br] = await Promise.all([
-        repParticipacionInternos(p),
-        repCoberturaInternos(p),
-        repInternosPorClase(p),
-        repInternosPorGrado(p),
-        repBrechasInternos(p),
-      ]);
-      setInternosRank(rank ?? []); setCobertura(cov ?? null); setClase(cl ?? []); setGrado(gr ?? []); setBrechas(br ?? []);
-    } catch { clearInternos(); }
-  };
-
-  // Participantes → Externos
-  const applyExternos = async () => {
-    if (dr.isInvalid) return clearExternos();
-    try { setExtRank((await repExternosRanking(dr.params)) ?? []); } catch { clearExternos(); }
-  };
-
-  // Instituciones
-  const applyInstRanking = async () => {
-    if (dr.isInvalid) return setInstRank([]);
-    try { setInstRank((await repInstitucionesRanking(dr.params)) ?? []); } catch { setInstRank([]); }
-  };
-
-    const applyInstHist = async () => {
-+   setInstTried(true);
-    setInstHist([]);
-    if (dr.isInvalid) return;
-    if (!instSel?.idinstitucion) return;
-    try {
-      const rows = await repHistorialInstitucion(instSel.idinstitucion, dr.params);
-      setInstHist(Array.isArray(rows) ? rows : []);
-    } catch {
-      setInstHist([]); // tabla vacía en caso de error
+      const data = await buscarPersonasCatalogo({ search, limit: 50 });
+      setPersonasOpt(data || []);
+    } catch (e) {
+      console.error("Error cargando personas externas:", e);
+    } finally {
+      setLoadingPersonas(false);
     }
   };
 
-
-
-  // Capacitaciones
-  const applyCaps = async () => {
-    if (dr.isInvalid) return clearCaps();
-    const p = dr.params;
+  const cargarInstituciones = async (search = "") => {
+    setLoadingInstituciones(true);
     try {
-      const [dt, tm, tp, sa, co, se] = await Promise.all([
-        repDistribucionPorTitulo(p),
-        repDistribucionPorTema(p),
-        repTopCapacitaciones(p),
-        repSinAsistentes(p),
-        repContenidosPorCapacitacion(p),
-        repSeriesMensuales(p),
-      ]);
-      setDistTitulo(dt ?? []); setDistTema(tm ?? []); setTopCaps(tp ?? []); setSinAsist(sa ?? []); setConts(co ?? []); setSeries(se ?? []);
-
-      // Resolver títulos para tablas que vienen sólo con ID
-      const contIds = (co || []).map((r) => Number(r.idcapacitacion || r.idCapacitacion)).filter(Boolean);
-      await ensureCapTitles(contIds);
-    } catch { clearCaps(); }
-  };
-
-  // Certificados
-  const applyCerts = async () => {
-    if (dr.isInvalid) return clearCerts();
-    const p = dr.params;
-    try {
-      const [em, tp, pc] = await Promise.all([
-        repCertificadosEmitidos(p),
-        repCertificadosPorTipo(p),
-        repCertificadosPorCapacitacion(p),
-      ]);
-      setCertEmit(em ?? []); setCertTipo(tp ?? []); setCertCap(pc ?? []);
-      // Resolver títulos si llega idcapacitacion sin nombre
-      const ids = (pc || []).map((r) => Number(r.idcapacitacion || r.idCapacitacion)).filter(Boolean);
-      await ensureCapTitles(ids);
-    } catch { clearCerts(); }
-  };
-
-  // Certificado por serie
-  const buscarSerie = async () => {
-    setCertFound(null);
-    const query = certSerie.trim();
-    if (!query) return;
-    try {
-      const res = await repCertificadoBuscarPorSerie(query);
-      setCertFound(res || { error: true });
-    } catch {
-      setCertFound({ error: true });
+      const data = await buscarInstitucionesCatalogo({ search, limit: 50 });
+      setInstitucionesOpt(data || []);
+    } catch (e) {
+      console.error("Error cargando instituciones:", e);
+    } finally {
+      setLoadingInstituciones(false);
     }
   };
 
-  // Personas (historial)
-  const applyPersonas = async () => {
-    setPerHist([]);
-    if (dr.isInvalid) return clearPer();
-    const sel = perSel;
-    if (!sel) return;
-    try {
-      if (perTipo === "interno" && !sel.idpersonal) return;
-      if (perTipo === "externo" && !sel.idpersona) return;
-      const id = perTipo === "interno" ? sel.idpersonal : sel.idpersona;
-      const rows = await repHistorialPersona(perTipo, id, dr.params);
-      setPerHist(rows || []);
-    } catch {
-      clearPer();
-    }
-  };
-
-  // Autocomplete personas
-  const doSearchPersonRef = useRef(null);
+  // Cargar catálogos al inicio
   useEffect(() => {
-    doSearchPersonRef.current = debounce(async (tipo, q) => {
-      try {
-        if (tipo === "interno") {
-          const data = await buscarPersonalCatalogo({ search: q, limit: 20, offset: 0 });
-          setPerOptions(Array.isArray(data) ? data : []);
-        } else {
-          const data = await buscarPersonasCatalogo({ search: q, limit: 20, offset: 0 });
-          setPerOptions(Array.isArray(data) ? data : []);
+    if (reporteSeleccionado === 'historial_persona_interno') {
+      cargarPersonal();
+    } else if (reporteSeleccionado === 'historial_persona_externo') {
+      cargarPersonasExternas();
+    } else if (reporteSeleccionado === 'historial_institucion') {
+      cargarInstituciones();
+    }
+  }, [reporteSeleccionado]);
+
+  // Categorías de reportes para tabs
+  const categorias = useMemo(() => [
+    {
+      id: 'resumen',
+      label: 'Resumen Ejecutivo',
+      icon: <TableChart />,
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'resumen')
+    },
+    {
+      id: 'internos',
+      label: 'Personal Interno',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'internos')
+    },
+    {
+      id: 'externos',
+      label: 'Externos e Instituciones',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'externos')
+    },
+    {
+      id: 'capacitaciones',
+      label: 'Capacitaciones',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'capacitaciones')
+    },
+    {
+      id: 'certificados',
+      label: 'Certificados',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'certificados')
+    }
+  ], []);
+
+  // Filtrar datos por búsqueda
+  const datosFiltrados = useMemo(() => {
+    if (!busqueda || !datos || datos.length === 0) return datos;
+    const termino = busqueda.toLowerCase();
+    return datos.filter(row =>
+      Object.values(row).some(value =>
+        String(value).toLowerCase().includes(termino)
+      )
+    );
+  }, [datos, busqueda]);
+
+  const generarReporte = async () => {
+    if (!reporteSeleccionado || reporteSeleccionado === 'dashboard') {
+      return; // El dashboard se muestra automáticamente
+    }
+
+    const reporte = REPORTES[reporteSeleccionado];
+    if (!reporte) return;
+
+    // Validar filtros requeridos
+    if (reporte.requiereFiltro === 'persona_interno' && !personaInternoSel) {
+      Swal.fire("Aviso", "Selecciona un miembro del personal", "info");
+      return;
+    }
+    if (reporte.requiereFiltro === 'persona_externo' && !personaExternoSel) {
+      Swal.fire("Aviso", "Selecciona una persona externa", "info");
+      return;
+    }
+    if (reporte.requiereFiltro === 'institucion' && !institucionSel) {
+      Swal.fire("Aviso", "Selecciona una institución", "info");
+      return;
+    }
+    if (reporte.requiereFiltro === 'serie' && !numeroSerie.trim()) {
+      Swal.fire("Aviso", "Ingresa un número de serie", "info");
+      return;
+    }
+
+    setLoading(true);
+    setBusqueda(''); // Limpiar búsqueda
+
+    try {
+      let resultado = [];
+      const params = {
+        inicio: fechaInicio || undefined,
+        fin: fechaFin || undefined
+      };
+
+      switch (reporteSeleccionado) {
+        // PERSONAL INTERNO
+        case 'participacion_internos': {
+          const data = await repParticipacionInternos(params);
+          resultado = (data || []).map(p => ({
+            Nombre: p.nombre || "—",
+            Apellido: p.apellido || "—",
+            'Total Capacitaciones': p.total_capacitaciones || p.total || 0
+          }));
+          break;
         }
-      } catch {
-        setPerOptions([]);
+
+        case 'cobertura_internos': {
+          const data = await repCoberturaInternos(params);
+          console.log('DEBUG - Cobertura data:', data);
+          // Normalizar: si es objeto, convertir a array
+          const dataArray = Array.isArray(data) ? data : (data ? [data] : []);
+          resultado = dataArray.map(c => ({
+            Descripción: c.descripcion || c.categoria || "Total",
+            'Total Personal': c.total_personal || 0,
+            Capacitados: c.con_capacitacion || c.capacitados || 0,
+            '% Cobertura': `${parseFloat(c.cobertura || c.porcentaje || 0).toFixed(1)}%`
+          }));
+          break;
+        }
+
+        case 'internos_clase': {
+          const data = await repInternosPorClase(params);
+          console.log('DEBUG - Clase data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro clase:', data[0]);
+          resultado = (data || []).map(c => ({
+            Clase: c.clase_gestion || c.clase || c.clase_nombre || "—",
+            'Total Participantes': c.participantes || c.total_personal || c.total || 0
+          }));
+          break;
+        }
+
+        case 'internos_grado': {
+          const data = await repInternosPorGrado(params);
+          console.log('DEBUG - Grado data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro grado:', data[0]);
+          resultado = (data || []).map(g => ({
+            Grado: g.grado_nombre || g.grado || "—",
+            'Total Participantes': g.participantes || g.total_personal || g.total || 0
+          }));
+          break;
+        }
+
+        case 'brechas_internos': {
+          const data = await repBrechasInternos(params);
+          console.log('DEBUG - Brechas data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro brechas:', data[0]);
+          resultado = (data || []).map(b => ({
+            Nombre: b.nombre || "—",
+            Apellido: b.apellido || "—",
+            'Última Capacitación': b.ultima_capacitacion || "Nunca"
+          }));
+          break;
+        }
+
+        case 'historial_persona_interno': {
+          const data = await repHistorialPersona('interno', personaInternoSel.idpersonal, params);
+          console.log('DEBUG - Historial interno data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro historial:', data[0]);
+          resultado = (data || []).map(h => ({
+            Capacitación: h.titulo || h.nombre_capacitacion || h.nombre || "—",
+            Tema: h.tema || h.curso || "—",
+            Fecha: h.fecha || "—"
+          }));
+          break;
+        }
+
+        // EXTERNOS E INSTITUCIONES
+        case 'externos_ranking': {
+          const data = await repExternosRanking(params);
+          resultado = (data || []).map(e => ({
+            Nombre: e.nombre || "—",
+            CI: e.ci || "—",
+            'Total Capacitaciones': e.total_capacitaciones || e.total || 0
+          }));
+          break;
+        }
+
+        case 'instituciones_ranking': {
+          const data = await repInstitucionesRanking(params);
+          resultado = (data || []).map(i => ({
+            Institución: i.nombre || i.institucion || "—",
+            'Persona Responsable': i.persona_responsable || "—",
+            'Total Capacitaciones': i.total_capacitaciones || i.total || 0
+          }));
+          break;
+        }
+
+        case 'historial_institucion': {
+          const data = await repHistorialInstitucion(institucionSel.idinstitucion, params);
+          resultado = (data || []).map(h => ({
+            Capacitación: h.titulo || h.nombre_capacitacion || h.nombre || "—",
+            Tema: h.tema || h.curso || "—",
+            Fecha: h.fecha || "—",
+            Participantes: h.participantes || 0
+          }));
+          break;
+        }
+
+        case 'historial_persona_externo': {
+          const data = await repHistorialPersona('externo', personaExternoSel.idpersona, params);
+          resultado = (data || []).map(h => ({
+            Capacitación: h.titulo || h.nombre_capacitacion || h.nombre || "—",
+            Tema: h.tema || h.curso || "—",
+            Fecha: h.fecha || "—"
+          }));
+          break;
+        }
+
+        // CAPACITACIONES
+        case 'distribucion_titulo': {
+          const data = await repDistribucionPorTitulo(params);
+          console.log('DEBUG - Distribucion titulo data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro titulo:', data[0]);
+          resultado = (data || []).map(d => ({
+            Título: d.titulo || d.nombre || "—",
+            Total: d.total_eventos || d.total || d.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'distribucion_tema': {
+          const data = await repDistribucionPorTema(params);
+          resultado = (data || []).map(d => ({
+            Tema: d.tema || d.nombre || "—",
+            Total: d.total_eventos || d.total || d.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'top_capacitaciones': {
+          const data = await repTopCapacitaciones(params);
+          console.log('DEBUG - Top capacitaciones data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro top:', data[0]);
+          resultado = (data || []).map(c => ({
+            Capacitación: c.titulo || c.nombre || "—",
+            Fecha: c.fecha || "—",
+            'Total Participantes': c.total || c.total_participantes || c.participantes || 0
+          }));
+          break;
+        }
+
+        case 'sin_asistentes': {
+          const data = await repSinAsistentes(params);
+          resultado = (data || []).map(c => ({
+            ID: c.idcapacitacion,
+            Capacitación: c.nombre || c.titulo || "—",
+            Fecha: c.fecha || "—",
+            Instructor: c.instructor || "—"
+          }));
+          break;
+        }
+
+        case 'series_mensuales': {
+          const data = await repSeriesMensuales(params);
+          console.log('DEBUG - Series mensuales data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro series:', data[0]);
+          // Función para formatear fecha a "Mes Año"
+          const formatearMes = (fechaStr) => {
+            if (!fechaStr) return "—";
+            try {
+              const fecha = new Date(fechaStr);
+              const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+              return `${meses[fecha.getMonth()]} ${fecha.getFullYear()}`;
+            } catch {
+              return fechaStr;
+            }
+          };
+          resultado = (data || []).map(s => ({
+            Mes: formatearMes(s.periodo || s.mes),
+            'Total Capacitaciones': s.eventos || s.total_eventos || s.total_capacitaciones || s.total || 0,
+            'Total Participantes': s.participantes || s.total_asistentes || s.total_participantes || 0
+          }));
+          break;
+        }
+
+        // CERTIFICADOS
+        case 'certificados_emitidos': {
+          const data = await listadoCertificados(params);
+          console.log('DEBUG - Certificados data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer certificado:', data[0]);
+          resultado = (data || []).map(c => ({
+            'Nro Serie': c.nro_serie || c.serie || "—",
+            Participante: c.participante || c.nombre || "—",
+            Capacitación: c.capacitacion || c.nombre_capacitacion || "—",
+            'Fecha Emisión': c.fecha_emision || c.fecha || "—",
+            Estado: c.estado || "—"
+          }));
+          break;
+        }
+
+        case 'certificados_tipo': {
+          const data = await repCertificadosPorTipo(params);
+          console.log('DEBUG - Certificados por tipo data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro tipo:', data[0]);
+          resultado = (data || []).map(t => ({
+            Tipo: t.tipoparticipante || t.tipo || t.plantilla || "—",
+            Total: t.total || t.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'certificados_capacitacion': {
+          const data = await repCertificadosPorCapacitacion(params);
+          console.log('DEBUG - Certificados por capacitacion data:', data);
+          if (data?.length > 0) console.log('DEBUG - Primer registro capacitacion:', data[0]);
+          resultado = (data || []).map(c => ({
+            Capacitación: c.titulo || c.nombre || c.capacitacion || "—",
+            'Total Certificados': c.certificados || c.total_certificados || c.total || 0
+          }));
+          break;
+        }
+
+        case 'buscar_serie': {
+          const data = await repCertificadoBuscarPorSerie(numeroSerie);
+          console.log('DEBUG - Buscar serie data:', data);
+          if (!data || Object.keys(data).length === 0) {
+            Swal.fire("No encontrado", "No se encontró ningún certificado con ese número de serie", "warning");
+            resultado = [];
+          } else {
+            resultado = [{
+              'Nro Serie': data.nroserie || data.nro_serie || data.serie || "—",
+              Participante: data.nombremostrado || data.participante || data.nombre || "—",
+              Capacitación: data.capacitacion || data.nombre_capacitacion || data.titulo || `ID: ${data.idcapacitacion || '?'}`,
+              'Fecha Emisión': data.fecha || data.fecha_emision || "—",
+              Estado: data.anulado === false ? "Vigente" : data.anulado === true ? "Anulado" : (data.estado || "—")
+            }];
+          }
+          break;
+        }
+
+        default:
+          Swal.fire("Aviso", "Reporte no implementado", "warning");
+          break;
       }
-    }, 350);
-  }, []);
-  useEffect(() => {
-    setPerSel(null);
-    setPerSearch("");
-    setPerOptions([]);
-    doSearchPersonRef.current?.(perTipo, "");
-  }, [perTipo]);
-  const onPersonSearchChange = (v) => {
-    setPerSearch(v);
-    doSearchPersonRef.current?.(perTipo, v);
+
+      setDatos(resultado);
+
+      if (resultado.length === 0) {
+        Swal.fire("Información", "No se encontraron registros para este reporte", "info");
+      }
+
+    } catch (e) {
+      console.error("Error generando reporte:", e);
+      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "Error al generar reporte", "error");
+      setDatos([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Autocomplete instituciones
-  const doSearchInstRef = useRef(null);
-  useEffect(() => {
-    doSearchInstRef.current = debounce(async (q) => {
-      try {
-        const data = await buscarInstitucionesCatalogo({ search: q, limit: 20, offset: 0 });
-        setInstOptions(Array.isArray(data) ? data : []);
-      } catch {
-        setInstOptions([]);
-      }
-    }, 350);
-  }, []);
-  useEffect(() => { doSearchInstRef.current?.(instSearch); }, []); // precarga
-
-  // Export util
-  const exportTable = (title, columns, rows, filename) => {
-    const cols = columns.map((c) => ({ header: c.label, dataKey: c.key }));
-    const mapped = rows.map((r) => {
-      const obj = {};
-      for (const c of columns) obj[c.key] = c.render ? c.render(r[c.key], r) : r[c.key];
-      return obj;
+  const exportarPDF = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+    const reporte = REPORTES[reporteSeleccionado];
+    const columns = Object.keys(datosFiltrados[0]).map(k => ({ header: k, dataKey: k }));
+    exportTablePdf({
+      title: `Reporte: ${reporte?.label || reporteSeleccionado}`,
+      subtitle: reporte?.descripcion || '',
+      columns,
+      rows: datosFiltrados,
+      filename: `capacitaciones_${reporteSeleccionado}.pdf`
     });
-    exportTablePdf({ title, columns: cols, rows: mapped, filename, orientation: "landscape" });
   };
 
-  // Efecto por pestaña
-  useEffect(() => {
-    if (tab === "participantes") {
-      if (tipoPart === "internos") applyInternos();
-      else applyExternos();
+  const exportarExcel = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
     }
-    if (tab === "instituciones") { applyInstRanking(); if (instSel) applyInstHist(); }
-    if (tab === "capacitaciones") applyCaps();
-    if (tab === "certificados")   applyCerts();
-    if (tab === "personas")       applyPersonas();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, tipoPart]);
-
-  // Reaplicar cuando cambia rango
-  const onApplyDates = () => {
-    if (tab === "participantes") {
-      if (tipoPart === "internos") applyInternos(); else applyExternos();
-    }
-    if (tab === "instituciones") { applyInstRanking(); applyInstHist(); }
-    if (tab === "capacitaciones") applyCaps();
-    if (tab === "certificados")   applyCerts();
-    if (tab === "personas")       applyPersonas();
+    const reporte = REPORTES[reporteSeleccionado];
+    exportToExcel({
+      data: datosFiltrados,
+      filename: `capacitaciones_${reporteSeleccionado}`,
+      sheetName: 'Reporte',
+      title: reporte?.label || reporteSeleccionado
+    });
   };
 
-  // Formatter de fechas cortas (defensivo)
-  const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—");
+  const reporteActual = REPORTES[reporteSeleccionado];
+  const mostrarFiltroFechas = reporteActual?.requiereFiltro === 'fechas';
+  const mostrarFiltroPersonaInterno = reporteActual?.requiereFiltro === 'persona_interno';
+  const mostrarFiltroPersonaExterno = reporteActual?.requiereFiltro === 'persona_externo';
+  const mostrarFiltroInstitucion = reporteActual?.requiereFiltro === 'institucion';
+  const mostrarFiltroSerie = reporteActual?.requiereFiltro === 'serie';
 
   return (
     <LayoutDashboard>
-      <Box p={2}>
-        <Typography variant="h5" gutterBottom>Reportes — Capacitaciones</Typography>
-
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-            <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="primary" indicatorColor="primary" sx={{ minHeight: 0 }}>
-              <Tab value="participantes"  label="Participantes" />
-              <Tab value="instituciones"  label="Instituciones" />
-              <Tab value="capacitaciones" label="Capacitaciones" />
-              <Tab value="certificados"   label="Certificados" />
-              <Tab value="personas"       label="Personas" />
-            </Tabs>
-
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              {/* Filtro global de fechas */}
-              <DateFilters
-                inicio={dr.inicio}
-                fin={dr.fin}
-                setInicio={dr.setInicio}
-                setFin={dr.setFin}
-                onApply={onApplyDates}
-              />
-              {(dr.inicio || dr.fin) && (
-                <Stack direction="row" spacing={1}>
-                  {dr.inicio && <Chip size="small" label={`Desde: ${fmtDate(dr.inicio)}`} />}
-                  {dr.fin && <Chip size="small" label={`Hasta: ${fmtDate(dr.fin)}`} />}
-                </Stack>
-              )}
-            </Stack>
-          </Stack>
-
-          {dr.isInvalid && (
-            <Typography variant="caption" color="error">
-              El rango es inválido: "Inicio" debe ser menor o igual que "Fin".
-            </Typography>
-          )}
-        </Paper>
-
-        {/* PARTICIPANTES (unificado) */}
-        {tab === "participantes" && (
-          <Stack spacing={2}>
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
-              <TextField
-                select
-                label="Tipo de participantes"
-                size="small"
-                sx={{ minWidth: 220 }}
-                value={tipoPart}
-                onChange={(e) => setTipoPart(e.target.value)}
-                SelectProps={{ native: true }}
-              >
-                <option value="internos">Internos</option>
-                <option value="externos">Externos</option>
-              </TextField>
-            </Stack>
-
-            {tipoPart === "internos" && (
-              <>
-                <Paper sx={{ p: 2 }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                    <Typography variant="subtitle1">KPI Cobertura</Typography>
-                    <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                      exportTable("Cobertura (internos)",
-                        [{ key: "k", label: "KPI" }, { key: "v", label: "Valor" }],
-                        [
-                          { k: "Personal", v: cobertura?.total_personal ?? 0 },
-                          { k: "Con capacitación", v: cobertura?.con_capacitacion ?? 0 },
-                          { k: "Cobertura %", v: cobertura?.cobertura ?? 0 },
-                        ],
-                        "kpi-cobertura.pdf"
-                      )
-                    }>Exportar</Button>
-                  </Stack>
-                  <Stack direction="row" spacing={2}>
-                    <Chip label={`Personal: ${cobertura?.total_personal ?? 0}`} />
-                    <Chip color="primary" label={`Con capacitación: ${cobertura?.con_capacitacion ?? 0}`} />
-                    <Chip color="success" label={`Cobertura: ${cobertura?.cobertura ?? 0}%`} />
-                  </Stack>
-                </Paper>
-
-                <Paper sx={{ p: 2 }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                    <Typography variant="subtitle1">Ranking de participación (internos)</Typography>
-                    <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                      exportTable("Ranking (internos)",
-                        [
-                          { key: "apellido", label: "Apellido" },
-                          { key: "nombre", label: "Nombre" },
-                          { key: "total_capacitaciones", label: "Total" },
-                        ],
-                        internosRank,
-                        "ranking-internos.pdf"
-                      )
-                    }>Exportar</Button>
-                  </Stack>
-                  <SimpleTable
-                    columns={[
-                      { key: "apellido", label: "Apellido" },
-                      { key: "nombre", label: "Nombre" },
-                      { key: "total_capacitaciones", label: "Total" },
-                    ]}
-                    rows={internosRank}
-                    getKey={(r, i) => `${r.apellido ?? ""}-${r.nombre ?? ""}-${i}`}
-                  />
-                </Paper>
-
-                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                  <Paper sx={{ p: 2, flex: 1 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                      <Typography variant="subtitle1">Participación por Clase</Typography>
-                      <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                        exportTable("Participación por Clase",
-                          [
-                            { key: "clase_gestion", label: "Clase" },
-                            { key: "participantes", label: "Participantes" },
-                          ],
-                          clase,
-                          "participacion-clase.pdf"
-                        )
-                      }>Exportar</Button>
-                    </Stack>
-                    <SimpleTable
-                      columns={[
-                        { key: "clase_gestion", label: "Clase" },
-                        { key: "participantes", label: "Participantes" },
-                      ]}
-                      rows={clase}
-                      getKey={(r, i) => `${r.clase_gestion ?? i}-${i}`}
-                    />
-                  </Paper>
-                  <Paper sx={{ p: 2, flex: 1 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                      <Typography variant="subtitle1">Participación por Grado</Typography>
-                      <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                        exportTable("Participación por Grado",
-                          [
-                            { key: "grado_nombre", label: "Grado" },
-                            { key: "participantes", label: "Participantes" },
-                          ],
-                          grado,
-                          "participacion-grado.pdf"
-                        )
-                      }>Exportar</Button>
-                    </Stack>
-                    <SimpleTable
-                      columns={[
-                        { key: "grado_nombre", label: "Grado" },
-                        { key: "participantes", label: "Participantes" },
-                      ]}
-                      rows={grado}
-                      getKey={(r, i) => `${r.grado_nombre ?? i}-${i}`}
-                    />
-                  </Paper>
-                </Stack>
-
-                <Paper sx={{ p: 2 }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                    <Typography variant="subtitle1">Brechas (sin capacitación en el rango)</Typography>
-                    <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                      exportTable("Brechas (internos)",
-                        [
-                          { key: "apellido", label: "Apellido" },
-                          { key: "nombre", label: "Nombre" },
-                        ],
-                        brechas,
-                        "brechas-internos.pdf"
-                      )
-                    }>Exportar</Button>
-                  </Stack>
-                  <SimpleTable
-                    columns={[
-                      { key: "apellido", label: "Apellido" },
-                      { key: "nombre", label: "Nombre" },
-                    ]}
-                    rows={brechas}
-                    getKey={(r, i) => `${r.apellido ?? ""}-${r.nombre ?? ""}-${i}`}
-                  />
-                </Paper>
-              </>
-            )}
-
-            {tipoPart === "externos" && (
-              <Paper sx={{ p: 2 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Ranking de participación (externos)</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Ranking (externos)",
-                      [
-                        { key: "nombre", label: "Nombre" },
-                        { key: "ci", label: "CI" },
-                        { key: "total_capacitaciones", label: "Total" },
-                      ],
-                      extRank,
-                      "ranking-externos.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "nombre", label: "Nombre" },
-                    { key: "ci", label: "CI" },
-                    { key: "total_capacitaciones", label: "Total" },
-                  ]}
-                  rows={extRank}
-                  getKey={(r, i) => `${r.nombre ?? ""}-${r.ci ?? ""}-${i}`}
-                />
-              </Paper>
-            )}
-          </Stack>
-        )}
-
-        {/* INSTITUCIONES */}
-        {tab === "instituciones" && (
-          <Stack spacing={2}>
-            <Paper sx={{ p: 2 }}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" justifyContent="space-between" mb={1}>
-                <Typography variant="subtitle1">Instituciones participantes</Typography>
-                <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                  exportTable("Instituciones participantes",
-                    [
-                      { key: "nombre", label: "Institución" },
-                      { key: "total_capacitaciones", label: "Capacitaciones" },
-                    ],
-                    instRank,
-                    "instituciones.pdf"
-                  )
-                }>Exportar</Button>
-              </Stack>
-              <SimpleTable
-                columns={[
-                  { key: "nombre", label: "Institución" },
-                  { key: "total_capacitaciones", label: "Capacitaciones" },
-                ]}
-                rows={instRank}
-                getKey={(r, i) => `${r.nombre ?? i}-${i}`}
-              />
-            </Paper>
-
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>Historial por institución</Typography>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" mb={2} flexWrap="wrap">
-                <Autocomplete
-                  sx={{ minWidth: 340, flex: 1 }}
-                  options={instOptions}
-                  value={instSel}
-                  onChange={(_, v) => setInstSel(v)}
-                  onInputChange={(_, v) => { setInstSearch(v); doSearchInstRef.current?.(v); }}
-                  getOptionLabel={(o) => (o?.nombre ? o.nombre : "")}
-                  isOptionEqualToValue={(a, b) => a?.idinstitucion === b?.idinstitucion}
-                  renderInput={(params) => <TextField {...params} label="Buscar institución" size="small" />}
-                  noOptionsText={instSearch ? "No hay coincidencias" : "Escribe para buscar"}
-                />
-                <Button variant="contained" startIcon={<Search />} onClick={applyInstHist} disabled={!instSel}>
-                  Ver historial
-                </Button>
-              </Stack>
-
-              {instTried && instSel && instHist.length === 0 && (
-    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-      No se encontraron capacitaciones para esta institución en el rango seleccionado.
-    </Typography>
-  )}
-
-  <SimpleTable
-    columns={[
-      { key: "fecha",  label: "Fecha", render: (v) => fmtDate(v) },
-      { key: "titulo", label: "Capacitación" },
-      { key: "tema",   label: "Tema" },
-    ]}
-    rows={instHist}
-    getKey={(r, i) => `${r.titulo ?? i}-${r.fecha ?? i}-${i}`}
-  />
-</Paper>
-          </Stack>
-        )}
-
-        {/* CAPACITACIONES */}
-        {tab === "capacitaciones" && (
-          <Stack spacing={2}>
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
-              <TextField
-                select
-                label="Tipo de capacitación"
-                size="small"
-                sx={{ minWidth: 220 }}
-                value={tipoCap}
-                onChange={(e) => setTipoCap(e.target.value)}
-                SelectProps={{ native: true }}
-              >
-                <option value="titulo">Título</option>
-                <option value="tema">Tema</option>
-              </TextField>
-            </Stack>
-
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Distribución por {tipoCap === "titulo" ? "Título" : "Tema"}</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable(`Distribución por ${tipoCap === "titulo" ? "Título" : "Tema"}`,
-                      [
-                        { key: tipoCap === "titulo" ? "titulo" : "tema", label: tipoCap === "titulo" ? "Título" : "Tema" },
-                        { key: "total_eventos", label: "Capacitaciones" },
-                        { key: "total_asistentes", label: "Asistentes" },
-                      ],
-                      tipoCap === "titulo" ? distTitulo : distTema,
-                      `dist-${tipoCap}.pdf`
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: tipoCap === "titulo" ? "titulo" : "tema", label: tipoCap === "titulo" ? "Título" : "Tema" },
-                    { key: "total_eventos", label: "Capacitaciones" },
-                    { key: "total_asistentes", label: "Asistentes" },
-                  ]}
-                  rows={tipoCap === "titulo" ? distTitulo : distTema}
-                  getKey={(r, i) => `${(tipoCap === "titulo" ? r.titulo : r.tema) ?? i}-${i}`}
-                />
-              </Paper>
-
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Serie mensual (capacitaciones y participantes)</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Serie mensual (capacitaciones y participantes)",
-                      [
-                        { key: "periodo", label: "Periodo" },
-                        { key: "eventos", label: "Capacitaciones" },
-                        { key: "participantes", label: "Participantes" },
-                      ],
-                      series,
-                      "serie-mensual.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "periodo", label: "Periodo" },
-                    { key: "eventos", label: "Capacitaciones" },
-                    { key: "participantes", label: "Participantes" },
-                  ]}
-                  rows={series}
-                  getKey={(r, i) => `${r.periodo ?? i}-${i}`}
-                />
-              </Paper>
-            </Stack>
-
-            <Paper sx={{ p: 2 }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                <Typography variant="subtitle1">Top Capacitaciones (por asistentes)</Typography>
-                <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                  exportTable("Top Capacitaciones",
-                    [
-                      { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                      { key: "titulo", label: "Capacitación" },
-                      { key: "total", label: "Asistentes" },
-                    ],
-                    topCaps,
-                    "top-capacitaciones.pdf"
-                  )
-                }>Exportar</Button>
-              </Stack>
-              <SimpleTable
-                columns={[
-                  { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                  { key: "titulo", label: "Capacitación" },
-                  { key: "total", label: "Asistentes" },
-                ]}
-                rows={topCaps}
-                getKey={(r, i) => `${r.titulo ?? i}-${r.fecha ?? i}-${i}`}
-              />
-            </Paper>
-
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Capacitaciones sin asistentes</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Capacitaciones sin asistentes",
-                      [
-                        { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                        { key: "titulo", label: "Capacitación" },
-                      ],
-                      sinAsist,
-                      "sin-asistentes.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                    { key: "titulo", label: "Capacitación" },
-                  ]}
-                  rows={sinAsist}
-                  getKey={(r, i) => `${r.titulo ?? i}-${r.fecha ?? i}-${i}`}
-                />
-              </Paper>
-
-              {/* Recursos por capacitación (sin IDs visibles) */}
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Recursos por capacitación</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Recursos por capacitación",
-                      [
-                        { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                        { key: "cap", label: "Capacitación" },
-                        { key: "total_contenidos", label: "Recursos" },
-                      ],
-                      (conts || []).map((r) => ({
-                        ...r,
-                        cap: capTitles[r.idcapacitacion] || capTitles[r.idCapacitacion] || `Cap. #${r.idcapacitacion || r.idCapacitacion}`,
-                      })),
-                      "recursos.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                    { key: "cap", label: "Capacitación", render: (_v, r) => capTitles[r.idcapacitacion] || capTitles[r.idCapacitacion] || `Cap. #${r.idcapacitacion || r.idCapacitacion}` },
-                    { key: "total_contenidos", label: "Recursos" },
-                  ]}
-                  rows={conts}
-                  getKey={(r, i) => `${r.idcapacitacion ?? r.idCapacitacion ?? i}-${i}`}
-                />
-              </Paper>
-            </Stack>
-          </Stack>
-        )}
-
-        {/* CERTIFICADOS */}
-        {tab === "certificados" && (
-          <Stack spacing={2}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>Buscar por Nro. de Serie</Typography>
-              <Stack direction="row" spacing={2}>
-                <TextField label="Nro. de Serie" size="small" value={certSerie} onChange={(e) => setCertSerie(e.target.value)} />
-                <Button variant="contained" onClick={buscarSerie}>Buscar</Button>
-              </Stack>
-              <Divider sx={{ my: 2 }} />
-              {certFound && !certFound.error && (
-                <Stack spacing={1}>
-                  <Typography variant="body2"><b>Serie:</b> {certFound.nroSerie || certFound.nroserie || "—"}</Typography>
-                  <Typography variant="body2"><b>Nombre:</b> {certFound.nombremostrado || certFound.nombreMostrado || "—"}</Typography>
-                  <Typography variant="body2"><b>Fecha:</b> {fmtDate(certFound.fecha)}</Typography>
-                  <Typography variant="body2"><b>Capacitación:</b> {certFound.titulo_resuelto || certFound.titulo || "—"}</Typography>
-                  <Typography variant="body2"><b>Estado:</b> {certFound.anulado ? "ANULADO" : "Vigente"}</Typography>
-                  {(certFound.archivoPDF || certFound.archivopdf) && (
-                    <Typography variant="body2">
-                      <a href={certFound.archivoPDF || certFound.archivopdf} target="_blank" rel="noreferrer">Ver PDF</a>
-                    </Typography>
-                  )}
-                </Stack>
-              )}
-              {certFound?.error && <Typography color="error">No se pudo buscar el certificado.</Typography>}
-            </Paper>
-
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Certificados emitidos (mensual)</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Certificados emitidos (mensual)",
-                      [
-                        { key: "periodo", label: "Periodo" },
-                        { key: "emitidos", label: "Emitidos" },
-                        { key: "anulados", label: "Anulados" },
-                      ],
-                      certEmit,
-                      "certificados-emitidos.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "periodo", label: "Periodo" },
-                    { key: "emitidos", label: "Emitidos" },
-                    { key: "anulados", label: "Anulados" },
-                  ]}
-                  rows={certEmit}
-                  getKey={(r, i) => `${r.periodo ?? i}-${i}`}
-                />
-              </Paper>
-
-              <Paper sx={{ p: 2, flex: 1 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="subtitle1">Certificados por tipo</Typography>
-                  <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                    exportTable("Certificados por tipo",
-                      [
-                        { key: "tipoparticipante", label: "Tipo" },
-                        { key: "total", label: "Total" },
-                      ],
-                      certTipo,
-                      "certificados-tipo.pdf"
-                    )
-                  }>Exportar</Button>
-                </Stack>
-                <SimpleTable
-                  columns={[
-                    { key: "tipoparticipante", label: "Tipo" },
-                    { key: "total", label: "Total" },
-                  ]}
-                  rows={certTipo}
-                  getKey={(r, i) => `${r.tipoparticipante ?? i}-${i}`}
-                />
-              </Paper>
-            </Stack>
-
-            <Paper sx={{ p: 2 }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-                <Typography variant="subtitle1">Certificados por capacitación</Typography>
-                <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                  exportTable("Certificados por capacitación",
-                    [
-                      { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                      { key: "titulo", label: "Capacitación" },
-                      { key: "certificados", label: "Certificados" },
-                      { key: "anulados", label: "Anulados" },
-                    ],
-                    certCap,
-                    "certificados-por-capacitacion.pdf"
-                  )
-                }>Exportar</Button>
-              </Stack>
-              <SimpleTable
-                columns={[
-                  { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                  { key: "titulo", label: "Capacitación" },
-                  { key: "certificados", label: "Certificados" },
-                  { key: "anulados", label: "Anulados" },
-                ]}
-                rows={certCap}
-                getKey={(r, i) => `${r.titulo ?? i}-${r.fecha ?? i}-${i}`}
-              />
-            </Paper>
-          </Stack>
-        )}
-
-        {/* PERSONAS (historial con Autocomplete) */}
-        {tab === "personas" && (
-          <Paper sx={{ p: 2 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-              <Typography variant="subtitle1">Historial por persona</Typography>
-              <Button size="small" startIcon={<PictureAsPdf />} onClick={() =>
-                exportTable(
-                  "Historial por persona",
-                  [
-                    { key: "fecha", label: "Fecha", render: (v) => fmtDate(v) },
-                    { key: "titulo", label: "Capacitación" },
-                    { key: "tema",   label: "Tema"   },
-                  ],
-                  perHist,
-                  "historial-persona.pdf"
-                )
-              }>
-                Exportar
-              </Button>
-            </Stack>
-
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" mb={2} flexWrap="wrap">
-              <TextField
-                select
-                label="Tipo"
-                size="small"
-                sx={{ minWidth: 160 }}
-                value={perTipo}
-                onChange={(e) => setPerTipo(e.target.value)}
-                SelectProps={{ native: true }}
-              >
-                <option value="interno">Interno</option>
-                <option value="externo">Externo</option>
-              </TextField>
-
-              <Autocomplete
-                sx={{ minWidth: 320, flex: 1 }}
-                options={perOptions}
-                value={perSel}
-                onChange={(_, v) => setPerSel(v)}
-                onInputChange={(_, v) => onPersonSearchChange(v)}
-                getOptionLabel={(o) => {
-                  if (!o) return "";
-                  if (perTipo === "interno") {
-                    const nombre = `${o.nombre ?? ""} ${o.apellido ?? ""}`.trim();
-                    const extra = [o.ci, o.clase_nombre, o.grado_nombre].filter(Boolean).join(" — ");
-                    return extra ? `${nombre} — ${extra}` : nombre;
-                  }
-                  const extra = [o.ci, o.correo].filter(Boolean).join(" — ");
-                  return extra ? `${o.nombre} — ${extra}` : (o.nombre ?? "");
-                }}
-                isOptionEqualToValue={(a, b) => {
-                  if (!a || !b) return a === b;
-                  return perTipo === "interno"
-                    ? a.idpersonal === b.idpersonal
-                    : a.idpersona === b.idpersona;
-                }}
-                renderInput={(params) => (
-                  <TextField {...params} label={`Buscar ${perTipo === "interno" ? "personal" : "persona"} por nombre / CI`} size="small" />
-                )}
-                noOptionsText={perSearch ? "No hay coincidencias" : "Escribe para buscar"}
-              />
-
-              <Button variant="contained" startIcon={<Search />} onClick={applyPersonas} disabled={!perSel}>
-                Buscar
-              </Button>
-            </Stack>
-
-            <SimpleTable
-              columns={[
-                { key: "fecha",  label: "Fecha", render: (v) => fmtDate(v) },
-                { key: "titulo", label: "Capacitación" },
-                { key: "tema",   label: "Tema"   },
-              ]}
-              rows={perHist}
-              getKey={(r, i) => `${r.titulo ?? i}-${r.fecha ?? i}-${i}`}
-            />
-          </Paper>
-        )}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>Reportes de Capacitaciones</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Reportes profesionales con visualizaciones y exportación múltiple
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/capacitaciones")}>
+          Volver
+        </Button>
       </Box>
+
+      {/* Tabs de categorías */}
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={tabSeleccionada}
+          onChange={(e, newValue) => {
+            setTabSeleccionada(newValue);
+            const primeraCategoria = categorias[newValue];
+            if (primeraCategoria?.reportes.length > 0) {
+              setReporteSeleccionado(primeraCategoria.reportes[0].id);
+              setDatos([]);
+              setBusqueda('');
+            }
+          }}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {categorias.map((cat) => (
+            <Tab
+              key={cat.id}
+              label={cat.label}
+              icon={cat.icon}
+              iconPosition="start"
+            />
+          ))}
+        </Tabs>
+      </Paper>
+
+      {/* Selector de reporte */}
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={reporteSeleccionado === 'dashboard' ? 12 : 6}>
+            <TextField
+              select
+              fullWidth
+              label="Tipo de Reporte"
+              value={reporteSeleccionado}
+              onChange={(e) => {
+                setReporteSeleccionado(e.target.value);
+                setDatos([]);
+                setBusqueda('');
+              }}
+            >
+              {categorias[tabSeleccionada]?.reportes.map(r => (
+                <MenuItem key={r.id} value={r.id}>
+                  {r.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            {reporteActual && (
+              <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                {reporteActual.descripcion}
+              </Typography>
+            )}
+          </Grid>
+
+          {reporteSeleccionado !== 'dashboard' && (
+            <Grid item xs={12} md={6} display="flex" alignItems="center">
+              <Button
+                variant="contained"
+                onClick={generarReporte}
+                disabled={loading}
+                fullWidth
+                sx={{ height: 56 }}
+              >
+                {loading ? <CircularProgress size={24} /> : "Generar Reporte"}
+              </Button>
+            </Grid>
+          )}
+        </Grid>
+
+        {/* Filtros dinámicos según el reporte */}
+        {reporteSeleccionado !== 'dashboard' && (
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>Filtros del Reporte</Typography>
+            <Grid container spacing={2}>
+              {mostrarFiltroFechas && (
+                <>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Desde"
+                      InputLabelProps={{ shrink: true }}
+                      value={fechaInicio}
+                      onChange={(e) => setFechaInicio(e.target.value)}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Hasta"
+                      InputLabelProps={{ shrink: true }}
+                      value={fechaFin}
+                      onChange={(e) => setFechaFin(e.target.value)}
+                      size="small"
+                    />
+                  </Grid>
+                </>
+              )}
+
+              {mostrarFiltroPersonaInterno && (
+                <Grid item xs={12} sm={6}>
+                  <Autocomplete
+                    options={personalOpt}
+                    getOptionLabel={(option) => `${option.nombre || ''} ${option.apellido || ''} (${option.ci || ''})`}
+                    value={personaInternoSel}
+                    onChange={(e, newValue) => setPersonaInternoSel(newValue)}
+                    onInputChange={(e, value) => {
+                      if (value?.length > 2) cargarPersonal(value);
+                    }}
+                    loading={loadingPersonal}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Persona (Personal Interno)"
+                        size="small"
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {loadingPersonal ? <CircularProgress size={20} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
+
+              {mostrarFiltroPersonaExterno && (
+                <Grid item xs={12} sm={6}>
+                  <Autocomplete
+                    options={personasOpt}
+                    getOptionLabel={(option) => `${option.nombre || ''} (${option.ci || ''})`}
+                    value={personaExternoSel}
+                    onChange={(e, newValue) => setPersonaExternoSel(newValue)}
+                    onInputChange={(e, value) => {
+                      if (value?.length > 2) cargarPersonasExternas(value);
+                    }}
+                    loading={loadingPersonas}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Persona (Externa)"
+                        size="small"
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {loadingPersonas ? <CircularProgress size={20} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
+
+              {mostrarFiltroInstitucion && (
+                <Grid item xs={12} sm={6}>
+                  <Autocomplete
+                    options={institucionesOpt}
+                    getOptionLabel={(option) => option.nombre || ''}
+                    value={institucionSel}
+                    onChange={(e, newValue) => setInstitucionSel(newValue)}
+                    onInputChange={(e, value) => {
+                      if (value?.length > 2) cargarInstituciones(value);
+                    }}
+                    loading={loadingInstituciones}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Institución"
+                        size="small"
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {loadingInstituciones ? <CircularProgress size={20} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
+
+              {mostrarFiltroSerie && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Número de Serie"
+                    value={numeroSerie}
+                    onChange={(e) => setNumeroSerie(e.target.value)}
+                    size="small"
+                    placeholder="Ej: CERT-2024-001"
+                  />
+                </Grid>
+              )}
+            </Grid>
+          </Box>
+        )}
+      </Paper>
+
+      {/* Mostrar Dashboard o Resultados */}
+      {reporteSeleccionado === 'dashboard' ? (
+        <CapacitacionesDashboard />
+      ) : loading ? (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      ) : datos.length > 0 ? (
+        <>
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+              <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+              <Box display="flex" gap={1}>
+                <TextField
+                  size="small"
+                  placeholder="Buscar en resultados..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  sx={{ width: 250 }}
+                />
+                <Tooltip title="Exportar a Excel">
+                  <IconButton onClick={exportarExcel} color="success">
+                    <FileDownload />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Exportar a PDF">
+                  <IconButton onClick={exportarPDF} color="primary">
+                    <PictureAsPdf />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+            <TablaReporte datos={datosFiltrados} />
+          </Paper>
+          <Typography variant="body2" color="text.secondary" align="center">
+            Mostrando {datosFiltrados.length} de {datos.length} registros
+          </Typography>
+        </>
+      ) : (
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography variant="body1" color="text.secondary">
+            Haz clic en "Generar Reporte" para ver los resultados
+          </Typography>
+        </Paper>
+      )}
     </LayoutDashboard>
   );
 }

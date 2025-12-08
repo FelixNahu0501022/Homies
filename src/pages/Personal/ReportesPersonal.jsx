@@ -1,469 +1,872 @@
-// src/pages/personal/ReportesPersonal.jsx
-import { useEffect, useMemo, useState } from "react";
+// src/pages/Personal/ReportesPersonal.jsx
 import {
-  Typography, Paper, TextField, Button, Box, Grid, Table,
-  TableHead, TableRow, TableCell, TableBody, TablePagination,
-  Chip, CircularProgress, Divider, FormControlLabel, Switch
+  Typography, Paper, Box, Button, TextField, MenuItem, Grid, CircularProgress,
+  IconButton, Tooltip, Tabs, Tab, InputAdornment, Divider
 } from "@mui/material";
-import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { useState, useEffect, useMemo } from "react";
 import {
-  rptLegajo, rptDistribucionClase, rptDistribucionGrado, rptCompletitud,
-  rptCapParticipacion, rptCapCobertura, rptEmParticipacion, rptEmSinParticipacion
-} from "../../services/personal.service";
+  ArrowBack, PictureAsPdf, Refresh, TableView, Search, FileDownload
+} from "@mui/icons-material";
+import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { useNavigate } from "react-router-dom";
+import Swal from "sweetalert2";
 import { exportTablePdf } from "../../utils/pdfExport";
+import { exportToExcel } from "../../utils/exportToExcel";
+import { TablaReporte } from "../../components/reportes";
+import ReportePersonalDashboard from "./ReportePersonalDashboard";
+import {
+  rptLegajo,
+  rptDistribucionClase,
+  rptDistribucionGrado,
+  rptCompletitud,
+  rptCapParticipacion,
+  rptCapCobertura,
+  rptEmParticipacion,
+  rptEmSinParticipacion
+} from "../../services/personal.service";
+import api from "../../services/axios";
+
+// Definición de todos los reportes disponibles
+const REPORTES = {
+  // Panel de Control
+  dashboard: {
+    id: 'dashboard',
+    label: 'Panel de Control de Personal',
+    categoria: 'resumen',
+    descripcion: 'Dashboard ejecutivo con KPIs y gráficos estadísticos',
+    requiereFiltro: false
+  },
+
+  // Reportes de Personal
+  legajo: {
+    id: 'legajo',
+    label: 'Legajo Completo del Personal',
+    categoria: 'personal',
+    descripcion: 'Lista detallada de todo el personal operativo',
+    requiereFiltro: false,
+    filtros: ['clase', 'grado', 'estado']
+  },
+  distribucion_clase: {
+    id: 'distribucion_clase',
+    label: 'Distribución del Personal por Clase',
+    categoria: 'personal',
+    descripcion: 'Cantidad de personal agrupado por clase bomberil',
+    requiereFiltro: false
+  },
+  distribucion_grado: {
+    id: 'distribucion_grado',
+    label: 'Distribución del Personal por Grado',
+    categoria: 'personal',
+    descripcion: 'Cantidad de personal agrupado por grado jerárquico',
+    requiereFiltro: false
+  },
+  completitud: {
+    id: 'completitud',
+    label: 'Análisis de Completitud de Datos',
+    categoria: 'personal',
+    descripcion: 'Personal con datos incompletos o faltantes',
+    requiereFiltro: false,
+    filtros: ['soloIncompletos']
+  },
+
+  // Capacitaciones
+  cap_participacion: {
+    id: 'cap_participacion',
+    label: 'Participación del Personal en Capacitaciones',
+    categoria: 'capacitaciones',
+    descripcion: 'Personal y su historial de capacitaciones',
+    requiereFiltro: false,
+    filtros: ['fechas']
+  },
+  cap_cobertura: {
+    id: 'cap_cobertura',
+    label: 'Cobertura de Capacitaciones del Personal',
+    categoria: 'capacitaciones',
+    descripcion: 'Porcentaje de personal capacitado vs no capacitado',
+    requiereFiltro: false,
+    filtros: ['fechas']
+  },
+
+  // Emergencias
+  em_participacion: {
+    id: 'em_participacion',
+    label: 'Participación del Personal en Emergencias',
+    categoria: 'emergencias',
+    descripcion: 'Personal activo en atención de emergencias',
+    requiereFiltro: false,
+    filtros: ['fechas', 'tipoEmergencia']
+  },
+  em_sin_participacion: {
+    id: 'em_sin_participacion',
+    label: 'Personal Sin Participación en Emergencias',
+    categoria: 'emergencias',
+    descripcion: 'Personal que no ha participado en emergencias',
+    requiereFiltro: false,
+    filtros: ['fechas']
+  }
+};
+
+function TabPanel({ children, value, index, ...other }) {
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
 
 export default function ReportesPersonal() {
+  const navigate = useNavigate();
+  const [tabActual, setTabActual] = useState(0);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState('');
   const [loading, setLoading] = useState(false);
+  const [datos, setDatos] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
 
-  // Legajo (paginado)
-  const [page, setPage] = useState(0); // 0-based para TablePagination
-  const [limit, setLimit] = useState(10);
-  const [search, setSearch] = useState("");
-  const [legajo, setLegajo] = useState({ data: [], total: 0 });
-
-  // KPIs y tablas
-  const [distClase, setDistClase] = useState([]);
-  const [distGrado, setDistGrado] = useState([]);
-  const [completitud, setCompletitud] = useState([]);
+  // Filtros
+  const [clases, setClases] = useState([]);
+  const [grados, setGrados] = useState([]);
+  const [claseFiltro, setClaseFiltro] = useState('');
+  const [gradoFiltro, setGradoFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
   const [soloIncompletos, setSoloIncompletos] = useState(false);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
 
-  // Capacitaciones/Emergencias (12 meses por defecto)
-  const hoy = new Date().toISOString().slice(0, 10);
-  const hace12m = new Date(); hace12m.setFullYear(hace12m.getFullYear() - 1);
-  const defaultInicio = hace12m.toISOString().slice(0, 10);
+  useEffect(() => {
+    cargarCatalogos();
+  }, []);
 
-  const [capCob, setCapCob] = useState({ total_personal: 0, con_capacitacion: 0, cobertura: 0 });
-  const [capRank, setCapRank] = useState([]);
-  const [emRank, setEmRank] = useState([]);
-  const [emNoPart, setEmNoPart] = useState([]);
-
-  // Columnas para export y render
-  const columnsLegajo = useMemo(() => ([
-    { dataKey: "idpersonal", header: "ID" },
-    { dataKey: "apellido", header: "Apellido" },
-    { dataKey: "nombre", header: "Nombre" },
-    { dataKey: "ci", header: "CI" },
-    { dataKey: "clase_etiqueta", header: "Clase" },
-    { dataKey: "grado_nombre", header: "Grado" },
-    { dataKey: "telefono", header: "Teléfono" },
-  ]), []);
-
-  // Cargas
-  async function loadLegajo() {
-    setLoading(true);
+  const cargarCatalogos = async () => {
     try {
-      const res = await rptLegajo({ page: page + 1, limit, search });
-      setLegajo({ data: res.data || [], total: res.total || 0 });
-    } finally { setLoading(false); }
-  }
-  useEffect(() => { loadLegajo(); /* eslint-disable-next-line */ }, [page, limit]);
+      const [clasesRes, gradosRes] = await Promise.all([
+        api.get("/clases"),
+        api.get("/grados")
+      ]);
+      setClases(clasesRes.data || []);
+      setGrados(gradosRes.data || []);
+    } catch (e) {
+      console.error("Error cargar catálogos:", e);
+    }
+  };
 
-  async function loadKPIs() {
-    const [c, g, comp] = await Promise.all([
-      rptDistribucionClase(),
-      rptDistribucionGrado(),
-      rptCompletitud({ soloIncompletos }),
-    ]);
-    setDistClase(c || []); setDistGrado(g || []); setCompletitud(comp || []);
-  }
-  useEffect(() => { loadKPIs(); /* eslint-disable-next-line */ }, [soloIncompletos]);
+  // Filtrar reportes por categoría
+  const reportesPorCategoria = useMemo(() => {
+    const categorias = {
+      resumen: [],
+      personal: [],
+      capacitaciones: [],
+      emergencias: []
+    };
 
-  async function loadRanges() {
-    const [cov, rank, emP, emN] = await Promise.all([
-      rptCapCobertura({ inicio: defaultInicio, fin: hoy }),
-      rptCapParticipacion({ inicio: defaultInicio, fin: hoy }),
-      rptEmParticipacion({ inicio: `${defaultInicio}T00:00:00`, fin: `${hoy}T23:59:59` }),
-      rptEmSinParticipacion({ inicio: `${defaultInicio}T00:00:00`, fin: `${hoy}T23:59:59` }),
-    ]);
-    setCapCob(cov || { total_personal: 0, con_capacitacion: 0, cobertura: 0 });
-    setCapRank(rank || []); setEmRank(emP || []); setEmNoPart(emN || []);
-  }
-  useEffect(() => { loadRanges(); }, []); // eslint-disable-line
+    Object.values(REPORTES).forEach(reporte => {
+      categorias[reporte.categoria]?.push(reporte);
+    });
 
-  const totalIncompletos = useMemo(
-    () => completitud.filter(x => !x.tiene_telefono || !x.tiene_foto || !x.tiene_documento).length,
-    [completitud]
-  );
+    return categorias;
+  }, []);
+
+  // Filtrar datos por búsqueda
+  const datosFiltrados = useMemo(() => {
+    if (!busqueda || !datos || datos.length === 0) return datos;
+
+    const termino = busqueda.toLowerCase();
+    return datos.filter(row =>
+      Object.values(row).some(value =>
+        String(value).toLowerCase().includes(termino)
+      )
+    );
+  }, [datos, busqueda]);
+
+  const generarReporte = async () => {
+    if (!reporteSeleccionado) {
+      Swal.fire("Aviso", "Selecciona un tipo de reporte", "info");
+      return;
+    }
+
+    setLoading(true);
+    setBusqueda('');
+
+    try {
+      let resultado = [];
+
+      switch (reporteSeleccionado) {
+        case 'legajo': {
+          const params = {
+            limit: 10000,
+            idClase: claseFiltro || undefined,
+            idGrado: gradoFiltro || undefined,
+            activo: estadoFiltro ? (estadoFiltro === 'activo' ? true : false) : undefined
+          };
+          const data = await rptLegajo(params);
+          const personal = data?.data || data || [];
+
+          // Obtener datos completos de cada personal
+          const personalCompleto = await Promise.all(
+            personal.map(async (p) => {
+              if (!p.idpersonal) return p;
+              try {
+                const response = await api.get(`/personal/${p.idpersonal}`);
+                const completo = response.data || {};
+                // Combinar datos del reporte con datos completos
+                return { ...p, ...completo };
+              } catch (error) {
+                console.warn(`No se pudo obtener personal ${p.idpersonal}:`, error);
+                return p;
+              }
+            })
+          );
+
+          resultado = personalCompleto.map(p => ({
+            Nombre: p.nombre || "—",
+            Apellido: p.apellido || "—",
+            CI: p.ci || "—",
+            Clase: p.clase_etiqueta || p.clase_nombre || p.clase || "—",
+            Grado: p.grado_nombre || p.grado || "—",
+            Teléfono: p.telefono || p.tel || p.celular || "—",
+            Estado: p.activo ? 'Activo' : 'Inactivo'
+          }));
+          break;
+        }
+
+        case 'distribucion_clase': {
+          const data = await rptDistribucionClase();
+          resultado = data.map(c => ({
+            Clase: c.clase_etiqueta || c.clase_nombre || c.nombre || "—",
+            'Total Personal': parseInt(c.total || c.cantidad || 0),
+            Porcentaje: `${((parseInt(c.total || 0) / data.reduce((sum, item) => sum + parseInt(item.total || 0), 0)) * 100).toFixed(1)}%`
+          }));
+          break;
+        }
+
+        case 'distribucion_grado': {
+          const data = await rptDistribucionGrado();
+          resultado = data.map(g => ({
+            Grado: g.grado_nombre || g.grado || g.nombre || "—",
+            'Total Personal': parseInt(g.total || g.cantidad || 0),
+            Porcentaje: `${((parseInt(g.total || 0) / data.reduce((sum, item) => sum + parseInt(item.total || 0), 0)) * 100).toFixed(1)}%`
+          }));
+          break;
+        }
+
+        case 'completitud': {
+          const data = await rptCompletitud({ soloIncompletos });
+
+          resultado = data.map(p => {
+            // Calcular campos faltantes
+            const faltantes = [];
+            if (!p.tiene_telefono) faltantes.push('Teléfono');
+            if (!p.tiene_foto) faltantes.push('Foto');
+            if (!p.tiene_documento) faltantes.push('Documento');
+
+            // Calcular porcentaje (3 campos verificables)
+            const totalCampos = 3;
+            const completos = (p.tiene_telefono ? 1 : 0) +
+              (p.tiene_foto ? 1 : 0) +
+              (p.tiene_documento ? 1 : 0);
+            const porcentaje = ((completos / totalCampos) * 100).toFixed(0);
+
+            return {
+              Nombre: p.nombre || "—",
+              Apellido: p.apellido || "—",
+              CI: p.ci || "—",
+              'Campos Faltantes': faltantes.length > 0 ? faltantes.join(', ') : 'Ninguno',
+              '% Completitud': `${porcentaje}%`
+            };
+          });
+          break;
+        }
+
+        case 'cap_participacion': {
+          const params = {
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          };
+          const data = await rptCapParticipacion(params);
+          resultado = data.map(p => ({
+            Nombre: p.nombre || "—",
+            Apellido: p.apellido || "—",
+            'Total Capacitaciones': p.total_capacitaciones || p.totalCapacitaciones || p.total || 0
+          }));
+          break;
+        }
+
+        case 'cap_cobertura': {
+          const params = {
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          };
+          const data = await rptCapCobertura(params);
+          // Este reporte devuelve métricas agregadas
+          resultado = [{
+            'Total Personal': data.total_personal || 0,
+            'Con Capacitación': data.con_capacitacion || 0,
+            'Sin Capacitación': (data.total_personal || 0) - (data.con_capacitacion || 0),
+            '% Cobertura': data.cobertura ? `${data.cobertura}%` : "0%"
+          }];
+          break;
+        }
+
+        case 'em_participacion': {
+          const params = {
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          };
+          const data = await rptEmParticipacion(params);
+          resultado = data.map(p => ({
+            Nombre: p.nombre || "—",
+            Apellido: p.apellido || "—",
+            'Total Emergencias': p.total_emergencias || p.totalEmergencias || p.total || 0
+          }));
+          break;
+        }
+
+        case 'em_sin_participacion': {
+          const params = {
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          };
+          const data = await rptEmSinParticipacion(params);
+          resultado = data.map(p => ({
+            Nombre: p.nombre || "—",
+            Apellido: p.apellido || "—"
+          }));
+          break;
+        }
+
+        default:
+          Swal.fire("Aviso", "Tipo de reporte no implementado", "warning");
+          break;
+      }
+
+      setDatos(resultado);
+
+      if (resultado.length === 0) {
+        Swal.fire("Información", "No se encontraron registros para este reporte", "info");
+      }
+    } catch (e) {
+      console.error('Error al generar reporte:', e);
+      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "Error al generar reporte", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportarPDF = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+
+    try {
+      const reporte = REPORTES[reporteSeleccionado];
+      const primeraFila = datosFiltrados[0];
+      if (!primeraFila || typeof primeraFila !== 'object') {
+        Swal.fire("Error", "Formato de datos inválido para exportar", "error");
+        return;
+      }
+
+      const columns = Object.keys(primeraFila).map(k => ({
+        header: k,
+        dataKey: k
+      }));
+
+      exportTablePdf({
+        title: reporte?.label || "Reporte de Personal",
+        subtitle: reporte?.descripcion || "",
+        columns,
+        rows: datosFiltrados,
+        filename: `personal_${reporteSeleccionado}_${new Date().getTime()}.pdf`,
+        showStats: true
+      });
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      Swal.fire("Error", "Ocurrió un error al generar el PDF: " + error.message, "error");
+    }
+  };
+
+  const exportarExcel = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+
+    try {
+      const reporte = REPORTES[reporteSeleccionado];
+
+      exportToExcel({
+        data: datosFiltrados,
+        filename: `personal_${reporteSeleccionado}_${new Date().getTime()}`,
+        sheetName: 'Reporte',
+        title: reporte?.label || "Reporte de Personal"
+      });
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Excel generado',
+        text: 'El archivo se descargó correctamente',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      Swal.fire("Error", "Ocurrió un error al generar el Excel: " + error.message, "error");
+    }
+  };
+
+  const reporteActual = REPORTES[reporteSeleccionado];
+  const mostrarFiltros = reporteActual?.filtros || [];
 
   return (
     <LayoutDashboard>
-      <Box p={2}>
-        <Typography variant="h5" gutterBottom>Reportes de Personal</Typography>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Reportes de Personal
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Reportes profesionales con visualizaciones y exportación múltiple
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/personal")}>
+          Volver
+        </Button>
+      </Box>
 
-        {/* Filtros & export legajo */}
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Grid container spacing={2} alignItems="center">
+      {/* Tabs de Categorías */}
+      <Paper sx={{ mb: 3 }}>
+        <Tabs
+          value={tabActual}
+          onChange={(e, newValue) => {
+            setTabActual(newValue);
+            setReporteSeleccionado('');
+            setDatos([]);
+          }}
+          indicatorColor="primary"
+          textColor="primary"
+        >
+          <Tab label="Resumen Ejecutivo" icon={<TableView />} iconPosition="start" />
+          <Tab label="Reportes de Personal" icon={<Search />} iconPosition="start" />
+          <Tab label="Capacitaciones" icon={<TableView />} iconPosition="start" />
+          <Tab label="Emergencias" icon={<Search />} iconPosition="start" />
+        </Tabs>
+      </Paper>
+
+      {/* Tab Panel: Resumen Ejecutivo */}
+      <TabPanel value={tabActual} index={0}>
+        <ReportePersonalDashboard />
+      </TabPanel>
+
+      {/* Tab Panel: Reportes de Personal */}
+      <TabPanel value={tabActual} index={1}>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Selecciona un Reporte
+          </Typography>
+          <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
               <TextField
-                fullWidth size="small"
-                label="Buscar (nombre, apellido, CI, grado, clase)"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+                select
+                fullWidth
+                label="Tipo de Reporte"
+                value={reporteSeleccionado}
+                onChange={(e) => {
+                  setReporteSeleccionado(e.target.value);
+                  setDatos([]);
+                }}
+                size="small"
+              >
+                <MenuItem value="">
+                  <em>(Selecciona un reporte)</em>
+                </MenuItem>
+                {reportesPorCategoria.personal.map(r => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {reporteActual && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {reporteActual.descripcion}
+                </Typography>
+              )}
             </Grid>
-            <Grid item xs={12} md={3}>
-              <Button variant="contained" onClick={loadLegajo} disabled={loading}>Buscar</Button>
-            </Grid>
-            <Grid item xs={12} md={3} textAlign={{ xs: 'left', md: 'right' }}>
-              <Button variant="outlined" onClick={() => exportLegajoPDF(legajo.data, columnsLegajo)}>PDF</Button>
-            </Grid>
-          </Grid>
-        </Paper>
 
-        {/* KPIs */}
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}><KPI title="Total Personal" value={legajo.total} /></Grid>
-          <Grid item xs={12} md={3}><KPI title="Clases (cohortes)" value={distClase.length} /></Grid>
-          <Grid item xs={12} md={3}><KPI title="Grados" value={distGrado.length} /></Grid>
-          <Grid item xs={12} md={3}><KPI title="Incompletos (legajo)" value={totalIncompletos} /></Grid>
-        </Grid>
-
-        <Divider sx={{ my: 2 }} />
-
-        {/* Tabla Legajo */}
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom>Legajo</Typography>
-          {loading ? (
-            <Box display="grid" placeItems="center" p={4}><CircularProgress /></Box>
-          ) : (
-            <>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    {columnsLegajo.map(col => <TableCell key={col.dataKey}>{col.header}</TableCell>)}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {legajo.data.map((row) => (
-                    <TableRow key={row.idpersonal}>
-                      {columnsLegajo.map(col => (
-                        <TableCell key={col.dataKey}>
-                          {formatCell(row[col.dataKey], col.dataKey)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
+            {/* Filtros dinámicos */}
+            {mostrarFiltros.includes('clase') && (
+              <Grid item xs={12} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Clase"
+                  value={claseFiltro}
+                  onChange={(e) => setClaseFiltro(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value=""><em>Todas</em></MenuItem>
+                  {clases.map(c => (
+                    <MenuItem key={c.idclase} value={c.idclase}>{c.nombre}</MenuItem>
                   ))}
-                </TableBody>
-              </Table>
-              <TablePagination
-                component="div"
-                count={legajo.total}
-                page={page}
-                onPageChange={(_, p) => setPage(p)}
-                rowsPerPage={limit}
-                onRowsPerPageChange={(e) => { setLimit(parseInt(e.target.value, 10)); setPage(0); }}
-                rowsPerPageOptions={[5, 10, 20, 50]}
-              />
-            </>
-          )}
-        </Paper>
+                </TextField>
+              </Grid>
+            )}
 
-        {/* Distribuciones */}
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="subtitle1">Distribución por Clase</Typography>
-                <Button size="small" onClick={() => exportDistribClasePDF(distClase)}>PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Clase</TableCell>
-                    <TableCell align="right">Activos</TableCell>
-                    <TableCell align="right">Total</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {distClase.map((r) => (
-                    <TableRow key={r.idclase}>
-                      <TableCell>{r.clase_etiqueta}</TableCell>
-                      <TableCell align="right">{r.total_activos}</TableCell>
-                      <TableCell align="right">{r.total}</TableCell>
-                    </TableRow>
+            {mostrarFiltros.includes('grado') && (
+              <Grid item xs={12} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Grado"
+                  value={gradoFiltro}
+                  onChange={(e) => setGradoFiltro(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value=""><em>Todos</em></MenuItem>
+                  {grados.map(g => (
+                    <MenuItem key={g.idgrado} value={g.idgrado}>{g.nombre}</MenuItem>
                   ))}
-                </TableBody>
-              </Table>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="subtitle1">Distribución por Grado</Typography>
-                <Button size="small" onClick={() => exportDistribGradoPDF(distGrado)}>PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Grado</TableCell>
-                    <TableCell align="right">Activos</TableCell>
-                    <TableCell align="right">Total</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {distGrado.map((r) => (
-                    <TableRow key={r.idgrado}>
-                      <TableCell>{r.grado_nombre}</TableCell>
-                      <TableCell align="right">{r.total_activos}</TableCell>
-                      <TableCell align="right">{r.total}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
-          </Grid>
-        </Grid>
+                </TextField>
+              </Grid>
+            )}
 
-        <Divider sx={{ my: 2 }} />
+            {mostrarFiltros.includes('estado') && (
+              <Grid item xs={12} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Estado"
+                  value={estadoFiltro}
+                  onChange={(e) => setEstadoFiltro(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value=""><em>Todos</em></MenuItem>
+                  <MenuItem value="activo">Activo</MenuItem>
+                  <MenuItem value="inactivo">Inactivo</MenuItem>
+                </TextField>
+              </Grid>
+            )}
+          </Grid>
 
-        {/* Completitud de legajo */}
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Typography variant="h6">Completitud de Legajo</Typography>
-            <Box display="flex" alignItems="center" gap={1}>
-              <FormControlLabel
-                control={<Switch checked={soloIncompletos} onChange={(e) => setSoloIncompletos(e.target.checked)} />}
-                label="Mostrar solo incompletos"
-              />
-              <Button size="small" onClick={() => exportCompletitudPDF(completitud, soloIncompletos ? "Solo incompletos" : "Todos")}>
-                PDF
-              </Button>
-            </Box>
+          <Box mt={2} display="flex" gap={1}>
+            <Button
+              variant="contained"
+              onClick={generarReporte}
+              disabled={!reporteSeleccionado || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+            >
+              {loading ? "Generando..." : "Generar Reporte"}
+            </Button>
           </Box>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>CI</TableCell>
-                <TableCell>Apellido</TableCell>
-                <TableCell>Nombre</TableCell>
-                <TableCell>Teléfono</TableCell>
-                <TableCell>Foto</TableCell>
-                <TableCell>Documento</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {completitud.map(r => (
-                <TableRow key={r.idpersonal}>
-                  <TableCell>{r.ci}</TableCell>
-                  <TableCell>{r.apellido}</TableCell>
-                  <TableCell>{r.nombre}</TableCell>
-                  <TableCell>{r.tiene_telefono ? <Chip size="small" label="OK" color="success" /> : <Chip size="small" label="Falta" color="warning" />}</TableCell>
-                  <TableCell>{r.tiene_foto ? <Chip size="small" label="OK" color="success" /> : <Chip size="small" label="Falta" color="warning" />}</TableCell>
-                  <TableCell>{r.tiene_documento ? <Chip size="small" label="OK" color="success" /> : <Chip size="small" label="Falta" color="warning" />}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         </Paper>
 
-        {/* Capacitaciones & Emergencias */}
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2, height: '100%' }}>
-              <Typography variant="subtitle1" gutterBottom>Cobertura Capacitaciones (12 meses)</Typography>
-              <Typography>Con capacitación: <b>{capCob.con_capacitacion}</b> / {capCob.total_personal}</Typography>
-              <Typography>Porcentaje: <b>{capCob.cobertura}%</b></Typography>
-              <Box mt={1}>
-                <Button size="small" onClick={() => exportCoberturaPDF(capCob, defaultInicio, hoy)}>PDF</Button>
-              </Box>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2, height: '100%' }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="subtitle1">Ranking Capacitaciones</Typography>
-                <Button size="small" onClick={() => exportCapRankPDF(capRank, defaultInicio, hoy)}>PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Persona</TableCell>
-                    <TableCell align="right">Capacitaciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {capRank.slice(0, 8).map(r => (
-                    <TableRow key={r.idpersonal}>
-                      <TableCell>{r.apellido}, {r.nombre}</TableCell>
-                      <TableCell align="right">{r.total_capacitaciones}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2, height: '100%' }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="subtitle1">Ranking Emergencias</Typography>
-                <Button size="small" onClick={() => exportEmRankPDF(emRank, defaultInicio, hoy)}>PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Persona</TableCell>
-                    <TableCell align="right">Emergencias</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {emRank.slice(0, 8).map(r => (
-                    <TableRow key={r.idpersonal}>
-                      <TableCell>{r.apellido}, {r.nombre}</TableCell>
-                      <TableCell align="right">{r.total_emergencias}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
-          </Grid>
-        </Grid>
-
-        <Paper sx={{ p: 2, mt: 2 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-            <Typography variant="subtitle1">Sin participación en emergencias (12 meses)</Typography>
-            <Button size="small" onClick={() => exportEmNoPartPDF(emNoPart, defaultInicio, hoy)}>PDF</Button>
+        {/* Resultados */}
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={4}>
+            <CircularProgress />
           </Box>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Apellido</TableCell>
-                <TableCell>Nombre</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {emNoPart.slice(0, 20).map(r => (
-                <TableRow key={r.idpersonal}>
-                  <TableCell>{r.apellido}</TableCell>
-                  <TableCell>{r.nombre}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        ) : datos.length > 0 ? (
+          <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    size="small"
+                    placeholder="Buscar en resultados..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ width: 250 }}
+                  />
+                  <Tooltip title="Exportar a PDF">
+                    <IconButton onClick={exportarPDF} color="error">
+                      <PictureAsPdf />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Exportar a Excel">
+                    <IconButton onClick={exportarExcel} color="success">
+                      <FileDownload />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              <TablaReporte datos={datosFiltrados} />
+            </Paper>
+            <Typography variant="body2" color="text.secondary" align="center">
+              Mostrando {datosFiltrados.length} de {datos.length} registro(s)
+            </Typography>
+          </>
+        ) : reporteSeleccionado ? (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography variant="body1" color="text.secondary">
+              Haz clic en "Generar Reporte" para ver los resultados
+            </Typography>
+          </Paper>
+        ) : null}
+      </TabPanel>
+
+      {/* Tab Panel: Capacitaciones */}
+      <TabPanel value={tabActual} index={2}>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Selecciona un Reporte
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                fullWidth
+                label="Tipo de Reporte"
+                value={reporteSeleccionado}
+                onChange={(e) => {
+                  setReporteSeleccionado(e.target.value);
+                  setDatos([]);
+                }}
+                size="small"
+              >
+                <MenuItem value="">
+                  <em>(Selecciona un reporte)</em>
+                </MenuItem>
+                {reportesPorCategoria.capacitaciones.map(r => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {reporteActual && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {reporteActual.descripcion}
+                </Typography>
+              )}
+            </Grid>
+
+            {mostrarFiltros.includes('fechas') && (
+              <>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha Inicio"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha Fin"
+                    value={fechaFin}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </>
+            )}
+          </Grid>
+
+          <Box mt={2} display="flex" gap={1}>
+            <Button
+              variant="contained"
+              onClick={generarReporte}
+              disabled={!reporteSeleccionado || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+            >
+              {loading ? "Generando..." : "Generar Reporte"}
+            </Button>
+          </Box>
         </Paper>
-      </Box>
+
+        {/* Resultados (mismo código que tab anterior) */}
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={4}>
+            <CircularProgress />
+          </Box>
+        ) : datos.length > 0 ? (
+          <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    size="small"
+                    placeholder="Buscar en resultados..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ width: 250 }}
+                  />
+                  <Tooltip title="Exportar a PDF">
+                    <IconButton onClick={exportarPDF} color="error">
+                      <PictureAsPdf />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Exportar a Excel">
+                    <IconButton onClick={exportarExcel} color="success">
+                      <FileDownload />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              <TablaReporte datos={datosFiltrados} />
+            </Paper>
+            <Typography variant="body2" color="text.secondary" align="center">
+              Mostrando {datosFiltrados.length} de {datos.length} registro(s)
+            </Typography>
+          </>
+        ) : reporteSeleccionado ? (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography variant="body1" color="text.secondary">
+              Haz clic en "Generar Reporte" para ver los resultados
+            </Typography>
+          </Paper>
+        ) : null}
+      </TabPanel>
+
+      {/* Tab Panel: Emergencias */}
+      <TabPanel value={tabActual} index={3}>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Selecciona un Reporte
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                fullWidth
+                label="Tipo de Reporte"
+                value={reporteSeleccionado}
+                onChange={(e) => {
+                  setReporteSeleccionado(e.target.value);
+                  setDatos([]);
+                }}
+                size="small"
+              >
+                <MenuItem value="">
+                  <em>(Selecciona un reporte)</em>
+                </MenuItem>
+                {reportesPorCategoria.emergencias.map(r => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {reporteActual && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {reporteActual.descripcion}
+                </Typography>
+              )}
+            </Grid>
+
+            {mostrarFiltros.includes('fechas') && (
+              <>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha Inicio"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha Fin"
+                    value={fechaFin}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </>
+            )}
+          </Grid>
+
+          <Box mt={2} display="flex" gap={1}>
+            <Button
+              variant="contained"
+              onClick={generarReporte}
+              disabled={!reporteSeleccionado || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+            >
+              {loading ? "Generando..." : "Generar Reporte"}
+            </Button>
+          </Box>
+        </Paper>
+
+        {/* Resultados (mismo código) */}
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={4}>
+            <CircularProgress />
+          </Box>
+        ) : datos.length > 0 ? (
+          <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    size="small"
+                    placeholder="Buscar en resultados..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ width: 250 }}
+                  />
+                  <Tooltip title="Exportar a PDF">
+                    <IconButton onClick={exportarPDF} color="error">
+                      <PictureAsPdf />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Exportar a Excel">
+                    <IconButton onClick={exportarExcel} color="success">
+                      <FileDownload />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              <TablaReporte datos={datosFiltrados} />
+            </Paper>
+            <Typography variant="body2" color="text.secondary" align="center">
+              Mostrando {datosFiltrados.length} de {datos.length} registro(s)
+            </Typography>
+          </>
+        ) : reporteSeleccionado ? (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography variant="body1" color="text.secondary">
+              Haz clic en "Generar Reporte" para ver los resultados
+            </Typography>
+          </Paper>
+        ) : null}
+      </TabPanel>
     </LayoutDashboard>
   );
 }
-
-function formatCell(val, field) {
-  if (field === "telefono" && !val) return <Chip size="small" label="—" />;
-  return val ?? "";
-}
-
-/* ====== KPI local (evita ReferenceError) ====== */
-function KPI({ title, value }) {
-  return (
-    <Paper sx={{ p: 2, textAlign: "center" }}>
-      <Typography variant="body2" color="text.secondary">{title}</Typography>
-      <Typography variant="h5">{value ?? 0}</Typography>
-    </Paper>
-  );
-}
-
-/* ===== Exportaciones con tu util pdfExport.js ===== */
-function exportLegajoPDF(rows, cols) {
-  exportTablePdf({
-    title: "Legajo de Personal",
-    columns: cols,
-    rows,
-    filename: `legajo_personal_${new Date().toISOString().slice(0, 10)}.pdf`,
-    orientation: "portrait",
-  });
-}
-function exportDistribClasePDF(rows) {
-  exportTablePdf({
-    title: "Distribución por Clase (Personal)",
-    columns: [
-      { header: "Clase", dataKey: "clase_etiqueta" },
-      { header: "Activos", dataKey: "total_activos" },
-      { header: "Total", dataKey: "total" },
-    ],
-    rows,
-    filename: `distrib_clase_${hoyStr()}.pdf`,
-  });
-}
-function exportDistribGradoPDF(rows) {
-  exportTablePdf({
-    title: "Distribución por Grado (Personal)",
-    columns: [
-      { header: "Grado", dataKey: "grado_nombre" },
-      { header: "Activos", dataKey: "total_activos" },
-      { header: "Total", dataKey: "total" },
-    ],
-    rows,
-    filename: `distrib_grado_${hoyStr()}.pdf`,
-  });
-}
-function exportCompletitudPDF(rows, filtroLabel) {
-  exportTablePdf({
-    title: "Completitud de Legajo",
-    subtitle: filtroLabel ? `Filtro: ${filtroLabel}` : "",
-    columns: [
-      { header: "CI", dataKey: "ci" },
-      { header: "Apellido", dataKey: "apellido" },
-      { header: "Nombre", dataKey: "nombre" },
-      { header: "Teléfono", dataKey: "tiene_telefono" },
-      { header: "Foto", dataKey: "tiene_foto" },
-      { header: "Documento", dataKey: "tiene_documento" },
-    ],
-    rows: rows.map(r => ({
-      ...r,
-      tiene_telefono: r.tiene_telefono ? "OK" : "Falta",
-      tiene_foto: r.tiene_foto ? "OK" : "Falta",
-      tiene_documento: r.tiene_documento ? "OK" : "Falta",
-    })),
-    filename: `completitud_legajo_${hoyStr()}.pdf`,
-  });
-}
-function exportCoberturaPDF(kpi, inicio, fin) {
-  exportTablePdf({
-    title: "Cobertura de Capacitaciones",
-    subtitle: `Periodo: ${inicio} a ${fin}`,
-    columns: [
-      { header: "Total Personal", dataKey: "total_personal" },
-      { header: "Con Capacitaciones", dataKey: "con_capacitacion" },
-      { header: "Cobertura (%)", dataKey: "cobertura" },
-    ],
-    rows: [kpi],
-    filename: `capacitaciones_cobertura_${hoyStr()}.pdf`,
-  });
-}
-function exportCapRankPDF(rows, inicio, fin) {
-  exportTablePdf({
-    title: "Ranking de Capacitaciones",
-    subtitle: `Periodo: ${inicio} a ${fin}`,
-    columns: [
-      { header: "Apellido", dataKey: "apellido" },
-      { header: "Nombre", dataKey: "nombre" },
-      { header: "Capacitaciones", dataKey: "total_capacitaciones" },
-    ],
-    rows,
-    filename: `capacitaciones_ranking_${hoyStr()}.pdf`,
-  });
-}
-function exportEmRankPDF(rows, inicio, fin) {
-  exportTablePdf({
-    title: "Ranking de Emergencias",
-    subtitle: `Periodo: ${inicio} a ${fin}`,
-    columns: [
-      { header: "Apellido", dataKey: "apellido" },
-      { header: "Nombre", dataKey: "nombre" },
-      { header: "Emergencias", dataKey: "total_emergencias" },
-    ],
-    rows,
-    filename: `emergencias_ranking_${hoyStr()}.pdf`,
-  });
-}
-function exportEmNoPartPDF(rows, inicio, fin) {
-  exportTablePdf({
-    title: "Sin participación en emergencias",
-    subtitle: `Periodo: ${inicio} a ${fin}`,
-    columns: [
-      { header: "Apellido", dataKey: "apellido" },
-      { header: "Nombre", dataKey: "nombre" },
-    ],
-    rows,
-    filename: `emergencias_sin_part_${hoyStr()}.pdf`,
-  });
-}
-function hoyStr() { return new Date().toISOString().slice(0, 10); }

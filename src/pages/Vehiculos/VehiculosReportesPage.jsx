@@ -1,701 +1,721 @@
-// src/pages/vehiculos/VehiculosReportesPage.jsx
+// src/pages/vehiculos/VehiculosReportesPage.jsx - MEJORADO CON TABS
 import {
-  Typography, Paper, Box, Tabs, Tab, Button, TextField,
-  Table, TableHead, TableRow, TableCell, TableBody, Chip, MenuItem
+  Typography, Paper, Box, Button, TextField, MenuItem, IconButton, CircularProgress, Grid, Tooltip, Tabs, Tab
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
+import { ArrowBack, PictureAsPdf, TableChart, FileDownload } from "@mui/icons-material";
 import Swal from "sweetalert2";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
-import api from "../../services/axios"; // <- misma instancia que usan tus services
+import { useNavigate } from "react-router-dom";
 
 import {
-  rptDistribucionEstado,
-  rptDisponibles,
-  rptEnEmergencia,
-  rptTotalesItemFlota,
-  rptVehiculosPorItem,
-  rptParticipacionEmergencias,
-  rptRankingMantenimientos,
-  rptInventarioVehiculo,
-  rptDetalleVehiculo,
-  rptVehiculosListado,
-  listarVehiculos,
-  listarInventarioItems,
+  rptDistribucionEstado, rptDisponibles, rptEnEmergencia, rptTotalesItemFlota,
+  rptVehiculosPorItem, rptParticipacionEmergencias, rptRankingMantenimientos,
+  rptInventarioVehiculo, rptVehiculosListado, rptDisponiblesPorTipoEmergencia,
+  listarVehiculos, listarInventarioItems,
 } from "../../services/vehiculos.service";
+import api from "../../services/axios";
 import { exportTablePdf } from "../../utils/pdfExport";
+import { exportToExcel } from "../../utils/exportToExcel";
+import { TablaReporte } from "../../components/reportes";
+import VehiculosDashboard from "./VehiculosDashboard";
 
-const estadoColor = (estado) => {
-  if (estado === "Operativo") return "success";
-  if (estado === "Fuera de servicio") return "warning";
-  if (estado === "En emergencia") return "error";
-  return "default";
+// Definición de reportes por categoría
+const REPORTES = {
+  dashboard: {
+    id: 'dashboard',
+    label: 'Panel de Control',
+    descripcion: 'Dashboard ejecutivo con metrics e indicadores clave',
+    categoria: 'resumen'
+  },
+  distribucion_estado: {
+    id: 'distribucion_estado',
+    label: 'Distribución por Estado',
+    descripcion: 'Cantidad de vehículos agrupados por estado operativo',
+    categoria: 'estado'
+  },
+  disponibles: {
+    id: 'disponibles',
+    label: 'Vehículos Disponibles',
+    descripcion: 'Listado de todos los vehículos operativos disponibles',
+    categoria: 'estado'
+  },
+  en_emergencia: {
+    id: 'en_emergencia',
+    label: 'Vehículos en Emergencia',
+    descripcion: 'Vehículos actualmente en atención de emergencias',
+    categoria: 'estado'
+  },
+  totales_item: {
+    id: 'totales_item',
+    label: 'Totales por Ítem en la Flota',
+    descripcion: 'Resumen de inventario distribuido en todos los vehículos',
+    categoria: 'inventario'
+  },
+  vehiculos_por_item: {
+    id: 'vehiculos_por_item',
+    label: 'Vehículos por Ítem',
+    descripcion: 'Listado de vehículos que poseen un ítem específico',
+    categoria: 'inventario',
+    requiereFiltro: 'item'
+  },
+  inventario_vehiculo: {
+    id: 'inventario_vehiculo',
+    label: 'Inventario de Vehículo',
+    descripcion: 'Detalle del inventario asignado a un vehículo',
+    categoria: 'inventario',
+    requiereFiltro: 'vehiculo'
+  },
+  participacion_emergencias: {
+    id: 'participacion_emergencias',
+    label: 'Participación en Emergencias',
+    descripcion: 'Historial de participación de vehículos en emergencias',
+    categoria: 'actividad',
+    requiereFiltro: 'fechas'
+  },
+  ranking_mantenimientos: {
+    id: 'ranking_mantenimientos',
+    label: 'Ranking de Mantenimientos',
+    descripcion: 'Vehículos ordenados por cantidad de mantenimientos',
+    categoria: 'actividad',
+    requiereFiltro: 'fechas'
+  },
+  listado_filtrable: {
+    id: 'listado_filtrable',
+    label: 'Listado Completo Filtrable',
+    descripcion: 'Listado general con múltiples filtros personalizables',
+    categoria: 'actividad',
+    requiereFiltro: 'avanzado'
+  },
+  disponibles_tipo_emergencia: {
+    id: 'disponibles_tipo_emergencia',
+    label: 'Vehículos por Tipo de Emergencia',
+    descripcion: 'Vehículos disponibles categorizados por tipo de emergencia',
+    categoria: 'actividad',
+    requiereFiltro: 'tipo_emergencia'
+  }
 };
 
 export default function VehiculosReportesPage() {
-  const [tab, setTab] = useState(0);
+  const navigate = useNavigate();
+  const [tabSeleccionada, setTabSeleccionada] = useState(0);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState("dashboard");
+  const [loading, setLoading] = useState(false);
+  const [datos, setDatos] = useState([]);
+  const [busqueda, setBusqueda] = useState("");
 
-  // datasets base
-  const [distEstado, setDistEstado] = useState([]);
-  const [disponibles, setDisponibles] = useState([]);
-  const [enEmergencia, setEnEmergencia] = useState([]);
-  const [totalesItem, setTotalesItem] = useState([]);
-
-  // combos
+  // Opciones para filtros
   const [vehiculosOpt, setVehiculosOpt] = useState([]);
   const [itemsOpt, setItemsOpt] = useState([]);
+  const [filtrosOpt, setFiltrosOpt] = useState({ tipos: [], marcas: [], modelos: [], nominaciones: [] });
 
-  // selecciones
-  const [selItem, setSelItem] = useState("");          // idItem
-  const [selVehiculo, setSelVehiculo] = useState("");  // idVehiculo
+  // Filtros
+  const [selItem, setSelItem] = useState("");
+  const [selVehiculo, setSelVehiculo] = useState("");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
+  const [tipoEmergencia, setTipoEmergencia] = useState("");
+  const [filtroAvanzado, setFiltroAvanzado] = useState({ estado: "", tipo: "", marca: "", modelo: "", nominacion: "" });
 
-  // resultados
-  const [vehPorItem, setVehPorItem] = useState([]);
-  const [invVeh, setInvVeh] = useState([]);
-  const [detalleVeh, setDetalleVeh] = useState(null);
-
-  // rango fechas
-  const [inicio, setInicio] = useState("");
-  const [fin, setFin] = useState("");
-  const [partEmerg, setPartEmerg] = useState([]);
-  const [rankMant, setRankMant] = useState([]);
-
-  // listado filtrable
-  const [listado, setListado] = useState([]);
-  const [loadingListado, setLoadingListado] = useState(false);
-  const [filtro, setFiltro] = useState({ estado: "", tipo: "", marca: "", modelo: "", nominacion: "" });
-
-  // opciones para los filtros desplegables
-  const [filtrosOpt, setFiltrosOpt] = useState({
-    tipos: [],
-    marcas: [],
-    modelos: [],
-    nominaciones: [],
-  });
-
-  // =====================
-  // Carga inicial (básicos, combos, filtros y listado)
-  // =====================
-  const cargarBasicos = async () => {
-    try {
-      const [d1, d2, d3, d4] = await Promise.all([
-        rptDistribucionEstado(),
-        rptDisponibles(),
-        rptEnEmergencia(),
-        rptTotalesItemFlota(),
-      ]);
-      setDistEstado(d1 || []);
-      setDisponibles(d2 || []);
-      setEnEmergencia(d3 || []);
-      setTotalesItem(d4 || []);
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudieron cargar los reportes";
-      Swal.fire("Error", msg, "error");
-    }
-  };
-
-  const cargarOpciones = async () => {
-    try {
-      const [vs, its] = await Promise.all([listarVehiculos(), listarInventarioItems()]);
-      setVehiculosOpt(vs || []);
-      setItemsOpt((its || []).map(i => ({
-        iditem: i.iditem ?? i.idItem,
-        nombre: i.nombre,
-        descripcion: i.descripcion,
-      })));
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudieron cargar opciones";
-      Swal.fire("Error", msg, "error");
-    }
-  };
-
-  const cargarFiltros = async () => {
-    try {
-      const { data } = await api.get("/vehiculos/reportes/filtros");
-      setFiltrosOpt({
-        tipos: data?.tipos || [],
-        marcas: data?.marcas || [],
-        modelos: data?.modelos || [],
-        nominaciones: data?.nominaciones || [],
-      });
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudieron cargar filtros de vehículos";
-      Swal.fire("Error", msg, "error");
-    }
-  };
-
-  const onBuscarListado = async () => {
-    try {
-      setLoadingListado(true);
-      const params = {
-        estado: filtro.estado || undefined,
-        tipo: filtro.tipo || undefined,
-        marca: filtro.marca || undefined,
-        modelo: filtro.modelo || undefined,
-        nominacion: filtro.nominacion || undefined,
-      };
-      const data = await rptVehiculosListado(params);
-      setListado(data || []);
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo cargar listado";
-      Swal.fire("Error", msg, "error");
-    } finally {
-      setLoadingListado(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarBasicos();
+  // Cargar opciones al montar
+  useState(() => {
+    const cargarOpciones = async () => {
+      try {
+        const [vs, its, { data }] = await Promise.all([
+          listarVehiculos(),
+          listarInventarioItems(),
+          api.get("/vehiculos/reportes/filtros")
+        ]);
+        setVehiculosOpt(vs || []);
+        setItemsOpt((its || []).map(i => ({ iditem: i.iditem ?? i.idItem, nombre: i.nombre, descripcion: i.descripcion })));
+        setFiltrosOpt({ tipos: data?.tipos || [], marcas: data?.marcas || [], modelos: data?.modelos || [], nominaciones: data?.nominaciones || [] });
+      } catch (err) {
+        console.error("Error cargando opciones:", err);
+      }
+    };
     cargarOpciones();
-    cargarFiltros();   // <-- trae opciones para los select
-    onBuscarListado(); // <-- carga inicial del listado sin filtros
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // fuerza carga cuando entras a la pestaña de listado
-  useEffect(() => {
-    if (tab === 4 && listado.length === 0 && !loadingListado) {
-      onBuscarListado();
+  // Categorías de reportes para tabs
+  const categorias = useMemo(() => [
+    {
+      id: 'resumen',
+      label: 'Resumen Ejecutivo',
+      icon: <TableChart />,
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'resumen')
+    },
+    {
+      id: 'estado',
+      label: 'Estado y Disponibilidad',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'estado')
+    },
+    {
+      id: 'inventario',
+      label: 'Inventario',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'inventario')
+    },
+    {
+      id: 'actividad',
+      label: 'Actividad',
+      reportes: Object.values(REPORTES).filter(r => r.categoria === 'actividad')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  ], []);
 
-  // =====================
-  // Acciones con combos y rangos
-  // =====================
-  const onBuscarVehiculosPorItem = async () => {
+  // Filtrar datos por búsqueda
+  const datosFiltrados = useMemo(() => {
+    if (!busqueda || !datos || datos.length === 0) return datos;
+    const termino = busqueda.toLowerCase();
+    return datos.filter(row =>
+      Object.values(row).some(value =>
+        String(value).toLowerCase().includes(termino)
+      )
+    );
+  }, [datos, busqueda]);
+
+  const generarReporte = async () => {
+    if (!reporteSeleccionado || reporteSeleccionado === 'dashboard') {
+      return; // El dashboard se muestra automáticamente
+    }
+
+    const reporte = REPORTES[reporteSeleccionado];
+    if (!reporte) return;
+
+    // Validar filtros requeridos
+    if (reporte.requiereFiltro === 'item' && !selItem) {
+      Swal.fire("Aviso", "Selecciona un ítem", "info");
+      return;
+    }
+    if (reporte.requiereFiltro === 'vehiculo' && !selVehiculo) {
+      Swal.fire("Aviso", "Selecciona un vehículo", "info");
+      return;
+    }
+
+    setLoading(true);
+    setBusqueda(''); // Limpiar búsqueda
+
     try {
-      if (!selItem) return Swal.fire("Valida", "Selecciona un ítem", "info");
-      const data = await rptVehiculosPorItem(Number(selItem));
-      setVehPorItem(data || []);
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo cargar";
-      Swal.fire("Error", msg, "error");
+      let resultado = [];
+
+      switch (reporteSeleccionado) {
+        case 'distribucion_estado': {
+          const dist = await rptDistribucionEstado();
+          resultado = (dist || []).map(r => ({
+            Estado: r.estado,
+            Total: parseInt(r.total || 0),
+            Porcentaje: `${((parseInt(r.total || 0) / dist.reduce((sum, item) => sum + parseInt(item.total || 0), 0)) * 100).toFixed(1)}%`
+          }));
+          break;
+        }
+
+        case 'disponibles': {
+          // Workaround: El endpoint /reportes/disponibles tiene un bug
+          // Usamos el listado general y filtramos por estado Operativo
+          const todosVehiculos = await listarVehiculos();
+          const operativos = (todosVehiculos || []).filter(v =>
+            v.estado === 'Operativo' || v.estado === 'operativo'
+          );
+
+          resultado = operativos.map(v => ({
+            ID: v.idvehiculo,
+            Placa: v.placa,
+            Marca: v.marca,
+            Modelo: v.modelo,
+            Tipo: v.tipo || "—",
+            Nominación: v.nominacion || "—"
+          }));
+          break;
+        }
+
+        case 'en_emergencia': {
+          const emerg = await rptEnEmergencia();
+          resultado = (emerg || []).map(v => ({
+            ID: v.idvehiculo,
+            Placa: v.placa,
+            Marca: v.marca,
+            Modelo: v.modelo,
+            Tipo: v.tipo || "—",
+            Nominación: v.nominacion || "—"
+          }));
+          break;
+        }
+
+        case 'totales_item': {
+          const totales = await rptTotalesItemFlota();
+          resultado = (totales || []).map(r => ({
+            "ID Ítem": r.iditem,
+            Ítem: r.nombre,
+            "Total en Vehículos": r.total_en_vehiculos || 0,
+            "Vehículos con Ítem": r.vehiculos_con_item || 0
+          }));
+          break;
+        }
+
+        case 'vehiculos_por_item': {
+          const vehItem = await rptVehiculosPorItem(Number(selItem));
+          resultado = (vehItem || []).map(v => ({
+            "ID Vehículo": v.idvehiculo,
+            Placa: v.placa,
+            Marca: v.marca,
+            Modelo: v.modelo,
+            Estado: v.estado,
+            Cantidad: v.cantidad ?? 1
+          }));
+          break;
+        }
+
+        case 'participacion_emergencias': {
+          const partEmerg = await rptParticipacionEmergencias({
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          });
+          resultado = (partEmerg || []).map(r => ({
+            Vehículo: r.nominacion ? `${r.nominacion} (${r.placa})` : r.placa,
+            "Total Emergencias": r.total_emergencias || 0
+          }));
+          break;
+        }
+
+        case 'ranking_mantenimientos': {
+          const rankMant = await rptRankingMantenimientos({
+            inicio: fechaInicio || undefined,
+            fin: fechaFin || undefined
+          });
+          resultado = (rankMant || []).map(r => ({
+            Vehículo: r.nominacion ? `${r.nominacion} (${r.placa})` : r.placa,
+            "Total Mantenimientos": r.total_mantenimientos || 0
+          }));
+          break;
+        }
+
+        case 'inventario_vehiculo': {
+          const invVeh = await rptInventarioVehiculo(Number(selVehiculo));
+          resultado = (invVeh || []).map(it => ({
+            "ID Ítem": it.iditem ?? it.idItem ?? "—",
+            Nombre: it.item_nombre || it.nombre || "—",
+            Descripción: it.descripcion || "—",
+            Cantidad: it.cantidad ?? 1
+          }));
+          break;
+        }
+
+        case 'listado_filtrable': {
+          const params = {
+            estado: filtroAvanzado.estado || undefined,
+            tipo: filtroAvanzado.tipo || undefined,
+            marca: filtroAvanzado.marca || undefined,
+            modelo: filtroAvanzado.modelo || undefined,
+            nominacion: filtroAvanzado.nominacion || undefined,
+          };
+          const listado = await rptVehiculosListado(params);
+          resultado = (listado || []).map(v => ({
+            ID: v.idvehiculo,
+            Placa: v.placa,
+            Marca: v.marca,
+            Modelo: v.modelo,
+            Tipo: v.tipo || "—",
+            Nominación: v.nominacion || "—",
+            Estado: v.estado
+          }));
+          break;
+        }
+
+        case 'disponibles_tipo_emergencia': {
+          // Workaround: El endpoint tiene un bug y solo devuelve 1 vehículo
+          // Usamos el listado general y clasificamos por tipo en el frontend
+
+          const todosVehiculos = await listarVehiculos();
+
+          // Clasificar vehículos por tipo de emergencia (misma lógica del backend)
+          const clasificarTipoEmergencia = (tipoVehiculo) => {
+            if (!tipoVehiculo) return 'Apoyo';
+            const tipo = tipoVehiculo.toLowerCase();
+
+            if (tipo.includes('ambulancia')) return 'Médica';
+            if (tipo.includes('cisterna') || tipo.includes('bombero')) return 'Incendio';
+            if (tipo.includes('motocicleta') || tipo.includes('rescate')) return 'Rescate';
+            return 'Apoyo'; // Furgón y otros
+          };
+
+          // Agregar tipo_emergencia a cada vehículo
+          let vehiculosConTipo = (todosVehiculos || []).map(v => ({
+            ...v,
+            tipo_emergencia: clasificarTipoEmergencia(v.tipo)
+          }));
+
+          // Aplicar filtro si se seleccionó un tipo
+          if (tipoEmergencia) {
+            vehiculosConTipo = vehiculosConTipo.filter(v =>
+              v.tipo_emergencia === tipoEmergencia
+            );
+          }
+
+          resultado = (vehiculosConTipo || []).map(v => ({
+            Vehículo: v.nominacion ? `${v.nominacion} (${v.placa})` : v.placa,
+            Marca: v.marca,
+            Modelo: v.modelo,
+            Tipo: v.tipo || "—",
+            Estado: v.estado,
+            "Tipo de Emergencia": v.tipo_emergencia || "—"
+          }));
+          break;
+        }
+
+        default:
+          Swal.fire("Aviso", "Reporte no implementado", "warning");
+          break;
+      }
+
+      setDatos(resultado);
+
+      if (resultado.length === 0) {
+        Swal.fire("Información", "No se encontraron registros para este reporte", "info");
+      }
+
+    } catch (e) {
+      console.error("Error generando reporte:", e);
+      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "Error al generar reporte", "error");
+      setDatos([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const onBuscarPartEmerg = async () => {
-    try {
-      const p = { inicio: inicio || undefined, fin: fin || undefined };
-      const [p1, p2] = await Promise.all([
-        rptParticipacionEmergencias(p),
-        rptRankingMantenimientos({ inicio, fin }),
-      ]);
-      setPartEmerg(p1 || []);
-      setRankMant(p2 || []);
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo cargar";
-      Swal.fire("Error", msg, "error");
+  const exportarPDF = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
     }
+    const reporte = REPORTES[reporteSeleccionado];
+    const columns = Object.keys(datosFiltrados[0]).map(k => ({ header: k, dataKey: k }));
+    exportTablePdf({
+      title: `Reporte: ${reporte?.label || reporteSeleccionado}`,
+      subtitle: reporte?.descripcion || '',
+      columns,
+      rows: datosFiltrados,
+      filename: `vehiculos_${reporteSeleccionado}.pdf`
+    });
   };
 
-  const onBuscarInvVeh = async () => {
-    try {
-      if (!selVehiculo) return Swal.fire("Valida", "Selecciona un vehículo", "info");
-      const [inv, det] = await Promise.all([
-        rptInventarioVehiculo(Number(selVehiculo)),
-        rptDetalleVehiculo(Number(selVehiculo)),
-      ]);
-      setInvVeh(inv || []);
-      setDetalleVeh(det || null);
-    } catch (err) {
-      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo cargar";
-      Swal.fire("Error", msg, "error");
+  const exportarExcel = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
     }
+    const reporte = REPORTES[reporteSeleccionado];
+    exportToExcel({
+      data: datosFiltrados,
+      filename: `vehiculos_${reporteSeleccionado}`,
+      sheetName: 'Reporte',
+      title: reporte?.label || reporteSeleccionado
+    });
   };
 
-  // =====================
-  // Export helper
-  // =====================
-  const exportar = (titulo, cols, rows, file = "reporte.pdf", subtitle = "") =>
-    exportTablePdf({ title: titulo, subtitle, columns: cols, rows, filename: file });
+  const reporteActual = REPORTES[reporteSeleccionado];
+  const mostrarFiltroItem = reporteActual?.requiereFiltro === 'item';
+  const mostrarFiltroVehiculo = reporteActual?.requiereFiltro === 'vehiculo';
+  const mostrarFiltroFechas = reporteActual?.requiereFiltro === 'fechas';
+  const mostrarFiltroAvanzado = reporteActual?.requiereFiltro === 'avanzado';
+  const mostrarFiltroTipoEmergencia = reporteActual?.requiereFiltro === 'tipo_emergencia';
+
+  const tiposEmergencia = ['Médica', 'Incendio', 'Rescate', 'Apoyo'];
 
   return (
     <LayoutDashboard>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-        <Typography variant="h5">Reportes de Vehículos</Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>Reportes de Vehículos</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Reportes profesionales con visualizaciones y exportación múltiple
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/vehiculos")}>
+          Volver
+        </Button>
       </Box>
 
-      <Paper sx={{ p: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
-          <Tab label="Distribución/Disponibilidad" />
-          <Tab label="Totales por ítem / Vehículos por ítem" />
-          <Tab label="Participación y Mantenimientos (rango)" />
-          <Tab label="Inventario y Detalle por Vehículo" />
-          <Tab label="Listado filtrable" />
+      {/* Tabs de categorías */}
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={tabSeleccionada}
+          onChange={(e, newValue) => {
+            setTabSeleccionada(newValue);
+            const primeraCategoria = categorias[newValue];
+            if (primeraCategoria?.reportes.length > 0) {
+              setReporteSeleccionado(primeraCategoria.reportes[0].id);
+              setDatos([]);
+              setBusqueda('');
+            }
+          }}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {categorias.map((cat, index) => (
+            <Tab
+              key={cat.id}
+              label={cat.label}
+              icon={cat.icon}
+              iconPosition="start"
+            />
+          ))}
         </Tabs>
+      </Paper>
 
-        {/* Tab 0: Distribución & Disponibilidad */}
-        {tab === 0 && (
-          <Box mt={2} display="grid" gap={3}>
-            {/* Distribución por estado */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Distribución por estado</Typography>
-                <Button onClick={() =>
-                  exportar(
-                    "Distribución por estado",
-                    [{ header: "Estado", dataKey: "estado" }, { header: "Total", dataKey: "total" }],
-                    distEstado,
-                    "vehiculos_distribucion_estado.pdf"
-                  )
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>Estado</TableCell><TableCell>Total</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {distEstado.map((r, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Chip label={r.estado} color={estadoColor(r.estado)} /></TableCell>
-                      <TableCell>{r.total}</TableCell>
-                    </TableRow>
-                  ))}
-                  {distEstado.length === 0 && <TableRow><TableCell colSpan={2}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
+      {/* Selector de reporte */}
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={reporteSeleccionado === 'dashboard' ? 12 : 6}>
+            <TextField
+              select
+              fullWidth
+              label="Tipo de Reporte"
+              value={reporteSeleccionado}
+              onChange={(e) => {
+                setReporteSeleccionado(e.target.value);
+                setDatos([]);
+                setBusqueda('');
+              }}
+            >
+              {categorias[tabSeleccionada]?.reportes.map(r => (
+                <MenuItem key={r.id} value={r.id}>
+                  {r.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            {reporteActual && (
+              <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                {reporteActual.descripcion}
+              </Typography>
+            )}
+          </Grid>
 
-            {/* Disponibles */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="h6">Vehículos disponibles</Typography>
-                <Button onClick={() =>
-                  exportar(
-                    "Vehículos disponibles",
-                    [
-                      { header: "ID", dataKey: "idvehiculo" },
-                      { header: "Placa", dataKey: "placa" },
-                      { header: "Marca", dataKey: "marca" },
-                      { header: "Modelo", dataKey: "modelo" },
-                      { header: "Tipo", dataKey: "tipo" },
-                      { header: "Nominación", dataKey: "nominacion" },
-                    ],
-                    disponibles,
-                    "vehiculos_disponibles.pdf"
-                  )
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID</TableCell><TableCell>Placa</TableCell><TableCell>Marca</TableCell>
-                  <TableCell>Modelo</TableCell><TableCell>Tipo</TableCell><TableCell>Nominación</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {disponibles.map(v => (
-                    <TableRow key={v.idvehiculo}>
-                      <TableCell>{v.idvehiculo}</TableCell><TableCell>{v.placa}</TableCell>
-                      <TableCell>{v.marca}</TableCell><TableCell>{v.modelo}</TableCell>
-                      <TableCell>{v.tipo || "—"}</TableCell><TableCell>{v.nominacion || "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                  {disponibles.length === 0 && <TableRow><TableCell colSpan={6}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* En emergencia */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="h6">Vehículos en emergencia</Typography>
-                <Button onClick={() =>
-                  exportar(
-                    "Vehículos en emergencia",
-                    [
-                      { header: "ID", dataKey: "idvehiculo" },
-                      { header: "Placa", dataKey: "placa" },
-                      { header: "Marca", dataKey: "marca" },
-                      { header: "Modelo", dataKey: "modelo" },
-                      { header: "Tipo", dataKey: "tipo" },
-                      { header: "Nominación", dataKey: "nominacion" },
-                    ],
-                    enEmergencia,
-                    "vehiculos_en_emergencia.pdf"
-                  )
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID</TableCell><TableCell>Placa</TableCell><TableCell>Marca</TableCell>
-                  <TableCell>Modelo</TableCell><TableCell>Tipo</TableCell><TableCell>Nominación</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {enEmergencia.map(v => (
-                    <TableRow key={v.idvehiculo}>
-                      <TableCell>{v.idvehiculo}</TableCell><TableCell>{v.placa}</TableCell>
-                      <TableCell>{v.marca}</TableCell><TableCell>{v.modelo}</TableCell>
-                      <TableCell>{v.tipo || "—"}</TableCell><TableCell>{v.nominacion || "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                  {enEmergencia.length === 0 && <TableRow><TableCell colSpan={6}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-          </Box>
-        )}
-
-        {/* Tab 1: Totales por ítem / Vehículos por ítem */}
-        {tab === 1 && (
-          <Box mt={2} display="grid" gap={3}>
-            {/* Totales por ítem */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Totales por ítem en la flota</Typography>
-                <Button onClick={() =>
-                  exportar(
-                    "Totales por ítem en flota",
-                    [
-                      { header: "ID Ítem", dataKey: "iditem" },
-                      { header: "Ítem", dataKey: "nombre" },
-                      { header: "Total en vehículos", dataKey: "total_en_vehiculos" },
-                      { header: "Vehículos con ítem", dataKey: "vehiculos_con_item" },
-                    ],
-                    totalesItem,
-                    "totales_item_flota.pdf"
-                  )
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID Ítem</TableCell><TableCell>Ítem</TableCell>
-                  <TableCell>Total en vehículos</TableCell><TableCell>Vehículos con ítem</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {totalesItem.map(r => (
-                    <TableRow key={r.iditem}>
-                      <TableCell>{r.iditem}</TableCell><TableCell>{r.nombre}</TableCell>
-                      <TableCell>{r.total_en_vehiculos}</TableCell><TableCell>{r.vehiculos_con_item}</TableCell>
-                    </TableRow>
-                  ))}
-                  {totalesItem.length === 0 && <TableRow><TableCell colSpan={4}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* Vehículos por ítem */}
-            <Box>
-              <Box display="flex" gap={2} alignItems="center" mb={1}>
-                <Typography variant="h6" sx={{ flex: 1 }}>Vehículos por ítem</Typography>
-
-                <TextField
-                  size="small"
-                  select
-                  label="Ítem"
-                  value={selItem}
-                  onChange={(e) => setSelItem(e.target.value)}
-                  sx={{ minWidth: 280 }}
-                >
-                  <MenuItem value="">(Selecciona un ítem)</MenuItem>
-                  {itemsOpt.map(it => (
-                    <MenuItem key={it.iditem} value={it.iditem}>
-                      {it.nombre} {it.descripcion ? `— ${it.descripcion}` : ""}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                <Button variant="contained" onClick={onBuscarVehiculosPorItem}>Buscar</Button>
-                <Button
-                  onClick={() =>
-                    exportTablePdf({
-                      title: `Vehículos por ítem`,
-                      subtitle: selItem
-                        ? `Ítem seleccionado: ${(itemsOpt.find(x => String(x.iditem) === String(selItem))?.nombre) || selItem}`
-                        : "",
-                      columns: [
-                        { header: "ID Vehículo", dataKey: "idvehiculo" },
-                        { header: "Placa", dataKey: "placa" },
-                        { header: "Marca", dataKey: "marca" },
-                        { header: "Modelo", dataKey: "modelo" },
-                        { header: "Estado", dataKey: "estado" },
-                        { header: "Cantidad", dataKey: "cantidad" },
-                      ],
-                      rows: vehPorItem,
-                      filename: `vehiculos_por_item_${selItem || "NA"}.pdf`,
-                    })
-                  }
-                >
-                  Exportar PDF
-                </Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID Vehículo</TableCell><TableCell>Placa</TableCell><TableCell>Marca</TableCell>
-                  <TableCell>Modelo</TableCell><TableCell>Estado</TableCell><TableCell>Cantidad</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {vehPorItem.map(v => (
-                    <TableRow key={`${v.idvehiculo}-${v.iditem}`}>
-                      <TableCell>{v.idvehiculo}</TableCell><TableCell>{v.placa}</TableCell>
-                      <TableCell>{v.marca}</TableCell><TableCell>{v.modelo}</TableCell>
-                      <TableCell><Chip label={v.estado} color={estadoColor(v.estado)} size="small" /></TableCell>
-                      <TableCell>{v.cantidad ?? 1}</TableCell>
-                    </TableRow>
-                  ))}
-                  {vehPorItem.length === 0 && <TableRow><TableCell colSpan={6}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-          </Box>
-        )}
-
-        {/* Tab 2: Participación emergencias + Ranking mantenimientos */}
-        {tab === 2 && (
-          <Box mt={2} display="grid" gap={2}>
-            <Box display="flex" gap={2} alignItems="center">
-              <TextField label="Inicio" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} InputLabelProps={{ shrink: true }} />
-              <TextField label="Fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} InputLabelProps={{ shrink: true }} />
-              <Button variant="contained" onClick={onBuscarPartEmerg}>Buscar</Button>
-            </Box>
-
-            {/* Participación en emergencias */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Participación en emergencias</Typography>
-                <Button onClick={() =>
-                  exportTablePdf({
-                    title: `Participación en emergencias`,
-                    columns: [
-                      { header: "ID Vehículo", dataKey: "idvehiculo" },
-                      { header: "Placa", dataKey: "placa" },
-                      { header: "Total emergencias", dataKey: "total_emergencias" },
-                    ],
-                    rows: partEmerg,
-                    filename: "participacion_emergencias.pdf",
-                  })
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID Vehículo</TableCell><TableCell>Placa</TableCell><TableCell>Total emergencias</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {partEmerg.map(r => (
-                    <TableRow key={r.idvehiculo}>
-                      <TableCell>{r.idvehiculo}</TableCell><TableCell>{r.placa}</TableCell>
-                      <TableCell>{r.total_emergencias}</TableCell>
-                    </TableRow>
-                  ))}
-                  {partEmerg.length === 0 && <TableRow><TableCell colSpan={3}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-
-            {/* Ranking de mantenimientos */}
-            <Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Ranking de mantenimientos</Typography>
-                <Button onClick={() =>
-                  exportTablePdf({
-                    title: `Ranking de mantenimientos`,
-                    columns: [
-                      { header: "ID Vehículo", dataKey: "idvehiculo" },
-                      { header: "Placa", dataKey: "placa" },
-                      { header: "Total mantenimientos", dataKey: "total_mantenimientos" },
-                    ],
-                    rows: rankMant,
-                    filename: "ranking_mantenimientos.pdf",
-                  })
-                }>Exportar PDF</Button>
-              </Box>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID Vehículo</TableCell><TableCell>Placa</TableCell><TableCell>Total mantenimientos</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {rankMant.map(r => (
-                    <TableRow key={r.idvehiculo}>
-                      <TableCell>{r.idvehiculo}</TableCell><TableCell>{r.placa}</TableCell>
-                      <TableCell>{r.total_mantenimientos}</TableCell>
-                    </TableRow>
-                  ))}
-                  {rankMant.length === 0 && <TableRow><TableCell colSpan={3}>Sin datos</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
-          </Box>
-        )}
-
-        {/* Tab 3: Inventario y Detalle por vehículo */}
-        {tab === 3 && (
-          <Box mt={2} display="grid" gap={2}>
-            <Box display="flex" gap={2} alignItems="center">
-              <TextField
-                size="small"
-                select
-                label="Vehículo"
-                value={selVehiculo}
-                onChange={(e) => setSelVehiculo(e.target.value)}
-                sx={{ minWidth: 320 }}
-              >
-                <MenuItem value="">(Selecciona un vehículo)</MenuItem>
-                {vehiculosOpt.map(v => (
-                  <MenuItem key={v.idvehiculo} value={v.idvehiculo}>
-                    {v.placa} — {v.marca} {v.modelo} {v.nominacion ? `(${v.nominacion})` : ""}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              <Button variant="contained" onClick={onBuscarInvVeh}>Buscar</Button>
+          {reporteSeleccionado !== 'dashboard' && (
+            <Grid item xs={12} md={6} display="flex" alignItems="center">
               <Button
-                onClick={() =>
-                  exportTablePdf({
-                    title: `Inventario del vehículo`,
-                    subtitle: selVehiculo
-                      ? `Vehículo: ${vehiculosOpt.find(x => String(x.idvehiculo) === String(selVehiculo))?.placa || selVehiculo}`
-                      : "",
-                    columns: [
-                      { header: "ID Ítem", dataKey: "iditem" },
-                      { header: "Nombre", dataKey: "nombre" },
-                      { header: "Descripción", dataKey: "descripcion" },
-                      { header: "Cantidad", dataKey: "cantidad" },
-                    ],
-                    rows: invVeh,
-                    filename: `inventario_vehiculo_${selVehiculo || "NA"}.pdf`,
-                  })
-                }
+                variant="contained"
+                onClick={generarReporte}
+                disabled={loading}
+                fullWidth
+                sx={{ height: 56 }}
               >
-                Exportar PDF
+                {loading ? <CircularProgress size={24} /> : "Generar Reporte"}
               </Button>
-            </Box>
+            </Grid>
+          )}
+        </Grid>
 
-            <Box>
-              <Typography variant="h6" gutterBottom>Inventario del vehículo</Typography>
-              <Table size="small">
-                <TableHead><TableRow>
-                  <TableCell>ID Ítem</TableCell><TableCell>Nombre</TableCell>
-                  <TableCell>Descripción</TableCell><TableCell>Cantidad</TableCell>
-                </TableRow></TableHead>
-                <TableBody>
-                  {invVeh.map((it, idx) => (
-                    <TableRow key={it.iditem || idx}>
-                      <TableCell>{it.iditem ?? it.idItem ?? "—"}</TableCell>
-                      <TableCell>{it.nombre || "—"}</TableCell>
-                      <TableCell>{it.descripcion || "—"}</TableCell>
-                      <TableCell>{it.cantidad ?? 1}</TableCell>
-                    </TableRow>
-                  ))}
-                  {invVeh.length === 0 && <TableRow><TableCell colSpan={4}>Sin ítems</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </Box>
+        {/* Filtros dinámicos según el reporte */}
+        {reporteSeleccionado !== 'dashboard' && (
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>Filtros del Reporte</Typography>
+            <Grid container spacing={2}>
+              {mostrarFiltroItem && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Ítem"
+                    value={selItem}
+                    onChange={(e) => setSelItem(e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value=""><em>(Selecciona un ítem)</em></MenuItem>
+                    {itemsOpt.map(it => (
+                      <MenuItem key={it.iditem} value={it.iditem}>
+                        {it.nombre} {it.descripcion ? `— ${it.descripcion}` : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
 
-            <Box>
-              <Typography variant="h6" gutterBottom>Detalle de vehículo</Typography>
-              {detalleVeh?.vehiculo ? (
-                <Box sx={{ fontSize: 14 }}>
-                  <div><strong>Placa:</strong> {detalleVeh.vehiculo.placa}</div>
-                  <div><strong>Marca/Modelo:</strong> {detalleVeh.vehiculo.marca} {detalleVeh.vehiculo.modelo}</div>
-                  <div><strong>Tipo:</strong> {detalleVeh.vehiculo.tipo || "—"}</div>
-                  <div><strong>Nominación:</strong> {detalleVeh.vehiculo.nominacion || "—"}</div>
-                  <div><strong>Estado:</strong> <Chip label={detalleVeh.vehiculo.estado} color={estadoColor(detalleVeh.vehiculo.estado)} size="small" /></div>
-                </Box>
-              ) : <Box>Sin detalle</Box>}
-            </Box>
-          </Box>
-        )}
+              {mostrarFiltroVehiculo && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Vehículo"
+                    value={selVehiculo}
+                    onChange={(e) => setSelVehiculo(e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value=""><em>(Selecciona un vehículo)</em></MenuItem>
+                    {vehiculosOpt.map(v => (
+                      <MenuItem key={v.idvehiculo} value={v.idvehiculo}>
+                        {v.placa} — {v.marca} {v.modelo} {v.nominacion ? `(${v.nominacion})` : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
 
-        {/* Tab 4: Listado filtrable */}
-        {tab === 4 && (
-          <Box mt={2} display="grid" gap={2}>
-            <Box display="grid" gridTemplateColumns="repeat(5, 1fr)" gap={2}>
-              <TextField
-                label="Estado"
-                select
-                value={filtro.estado}
-                onChange={(e) => setFiltro(s => ({ ...s, estado: e.target.value }))}
-              >
-                <MenuItem value="">(Todos)</MenuItem>
-                <MenuItem value="Operativo">Operativo</MenuItem>
-                <MenuItem value="Fuera de servicio">Fuera de servicio</MenuItem>
-                <MenuItem value="En emergencia">En emergencia</MenuItem>
-              </TextField>
+              {mostrarFiltroFechas && (
+                <>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Desde"
+                      InputLabelProps={{ shrink: true }}
+                      value={fechaInicio}
+                      onChange={(e) => setFechaInicio(e.target.value)}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Hasta"
+                      InputLabelProps={{ shrink: true }}
+                      value={fechaFin}
+                      onChange={(e) => setFechaFin(e.target.value)}
+                      size="small"
+                    />
+                  </Grid>
+                </>
+              )}
 
-              <TextField
-                label="Tipo"
-                select
-                value={filtro.tipo}
-                onChange={(e) => setFiltro(s => ({ ...s, tipo: e.target.value }))}
-              >
-                <MenuItem value="">(Todos)</MenuItem>
-                {filtrosOpt.tipos.map((t, i) => <MenuItem key={i} value={t}>{t}</MenuItem>)}
-              </TextField>
+              {mostrarFiltroTipoEmergencia && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Tipo de Emergencia"
+                    value={tipoEmergencia}
+                    onChange={(e) => setTipoEmergencia(e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value="">(Todos los tipos)</MenuItem>
+                    {tiposEmergencia.map((tipo) => (
+                      <MenuItem key={tipo} value={tipo}>
+                        {tipo}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
 
-              <TextField
-                label="Marca"
-                select
-                value={filtro.marca}
-                onChange={(e) => setFiltro(s => ({ ...s, marca: e.target.value }))}
-              >
-                <MenuItem value="">(Todas)</MenuItem>
-                {filtrosOpt.marcas.map((m, i) => <MenuItem key={i} value={m}>{m}</MenuItem>)}
-              </TextField>
-
-              <TextField
-                label="Modelo"
-                select
-                value={filtro.modelo}
-                onChange={(e) => setFiltro(s => ({ ...s, modelo: e.target.value }))}
-              >
-                <MenuItem value="">(Todos)</MenuItem>
-                {filtrosOpt.modelos.map((m, i) => <MenuItem key={i} value={m}>{m}</MenuItem>)}
-              </TextField>
-
-              <TextField
-                label="Nominación"
-                select
-                value={filtro.nominacion}
-                onChange={(e) => setFiltro(s => ({ ...s, nominacion: e.target.value }))}
-              >
-                <MenuItem value="">(Todas)</MenuItem>
-                {filtrosOpt.nominaciones.map((n, i) => <MenuItem key={i} value={n}>{n}</MenuItem>)}
-              </TextField>
-            </Box>
-
-            <Box display="flex" gap={2}>
-              <Button variant="contained" onClick={onBuscarListado} disabled={loadingListado}>
-                {loadingListado ? "Buscando..." : "Buscar"}
-              </Button>
-              <Button
-                disabled={!listado.length}
-                onClick={() => exportTablePdf({
-                  title: "Listado de vehículos",
-                  columns: [
-                    { header: "ID", dataKey: "idvehiculo" },
-                    { header: "Placa", dataKey: "placa" },
-                    { header: "Marca", dataKey: "marca" },
-                    { header: "Modelo", dataKey: "modelo" },
-                    { header: "Tipo", dataKey: "tipo" },
-                    { header: "Nominación", dataKey: "nominacion" },
-                    { header: "Estado", dataKey: "estado" },
-                  ],
-                  rows: listado,
-                  filename: "vehiculos_listado.pdf"
-                })}
-              >
-                Exportar PDF
-              </Button>
-            </Box>
-
-            <Table size="small">
-              <TableHead><TableRow>
-                <TableCell>ID</TableCell><TableCell>Placa</TableCell><TableCell>Marca</TableCell>
-                <TableCell>Modelo</TableCell><TableCell>Tipo</TableCell><TableCell>Nominación</TableCell><TableCell>Estado</TableCell>
-              </TableRow></TableHead>
-              <TableBody>
-                {listado.map(v => (
-                  <TableRow key={v.idvehiculo}>
-                    <TableCell>{v.idvehiculo}</TableCell><TableCell>{v.placa}</TableCell>
-                    <TableCell>{v.marca}</TableCell><TableCell>{v.modelo}</TableCell>
-                    <TableCell>{v.tipo || "—"}</TableCell><TableCell>{v.nominacion || "—"}</TableCell>
-                    <TableCell><Chip label={v.estado} color={estadoColor(v.estado)} size="small" /></TableCell>
-                  </TableRow>
-                ))}
-                {listado.length === 0 && <TableRow><TableCell colSpan={7}>Sin resultados</TableCell></TableRow>}
-              </TableBody>
-            </Table>
+              {mostrarFiltroAvanzado && (
+                <>
+                  <Grid item xs={6} sm={2.4}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Estado"
+                      value={filtroAvanzado.estado}
+                      onChange={(e) => setFiltroAvanzado({ ...filtroAvanzado, estado: e.target.value })}
+                      size="small"
+                    >
+                      <MenuItem value="">(Todos)</MenuItem>
+                      <MenuItem value="Operativo">Operativo</MenuItem>
+                      <MenuItem value="Fuera de servicio">Fuera de servicio</MenuItem>
+                      <MenuItem value="En emergencia">En emergencia</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={6} sm={2.4}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Tipo"
+                      value={filtroAvanzado.tipo}
+                      onChange={(e) => setFiltroAvanzado({ ...filtroAvanzado, tipo: e.target.value })}
+                      size="small"
+                    >
+                      <MenuItem value="">(Todos)</MenuItem>
+                      {filtrosOpt.tipos.map((t, i) => <MenuItem key={i} value={t}>{t}</MenuItem>)}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={6} sm={2.4}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Marca"
+                      value={filtroAvanzado.marca}
+                      onChange={(e) => setFiltroAvanzado({ ...filtroAvanzado, marca: e.target.value })}
+                      size="small"
+                    >
+                      <MenuItem value="">(Todas)</MenuItem>
+                      {filtrosOpt.marcas.map((m, i) => <MenuItem key={i} value={m}>{m}</MenuItem>)}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={6} sm={2.4}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Modelo"
+                      value={filtroAvanzado.modelo}
+                      onChange={(e) => setFiltroAvanzado({ ...filtroAvanzado, modelo: e.target.value })}
+                      size="small"
+                    >
+                      <MenuItem value="">(Todos)</MenuItem>
+                      {filtrosOpt.modelos.map((m, i) => <MenuItem key={i} value={m}>{m}</MenuItem>)}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={6} sm={2.4}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Nominación"
+                      value={filtroAvanzado.nominacion}
+                      onChange={(e) => setFiltroAvanzado({ ...filtroAvanzado, nominacion: e.target.value })}
+                      size="small"
+                    >
+                      <MenuItem value="">(Todas)</MenuItem>
+                      {filtrosOpt.nominaciones.map((n, i) => <MenuItem key={i} value={n}>{n}</MenuItem>)}
+                    </TextField>
+                  </Grid>
+                </>
+              )}
+            </Grid>
           </Box>
         )}
       </Paper>
+
+      {/* Mostrar Dashboard o Resultados */}
+      {reporteSeleccionado === 'dashboard' ? (
+        <VehiculosDashboard />
+      ) : loading ? (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      ) : datos.length > 0 ? (
+        <>
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+              <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+              <Box display="flex" gap={1}>
+                <TextField
+                  size="small"
+                  placeholder="Buscar en resultados..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  sx={{ width: 250 }}
+                />
+                <Tooltip title="Exportar a Excel">
+                  <IconButton onClick={exportarExcel} color="success">
+                    <FileDownload />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Exportar a PDF">
+                  <IconButton onClick={exportarPDF} color="primary">
+                    <PictureAsPdf />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+            <TablaReporte datos={datosFiltrados} />
+          </Paper>
+          <Typography variant="body2" color="text.secondary" align="center">
+            Mostrando {datosFiltrados.length} de {datos.length} registros
+          </Typography>
+        </>
+      ) : (
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography variant="body1" color="text.secondary">
+            Haz clic en "Generar Reporte" para ver los resultados
+          </Typography>
+        </Paper>
+      )}
     </LayoutDashboard>
   );
 }

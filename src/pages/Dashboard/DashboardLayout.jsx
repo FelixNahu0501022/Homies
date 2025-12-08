@@ -12,7 +12,7 @@ export default function DashboardLayout({ children }) {
   const sidebarOffset = isSidebarOpen && !isMobile ? `${drawerWidth}px` : "0px";
 
   return (
-    <Box sx={{ display: "flex", width: "100%", height: "100vh", overflow: "hidden" }}>
+    <Box sx={{ display: "flex", width: "100%", minHeight: "100vh" }}>
       <CssBaseline />
       <Topbar />
       <Sidebar />
@@ -22,13 +22,13 @@ export default function DashboardLayout({ children }) {
         component="main"
         sx={{
           flexGrow: 1,
-          width: "100%",
+          width: `calc(100% - ${sidebarOffset})`,
           pt: 9,
-          px: { xs: 2, sm: 3 },
           transition: "margin 0.3s ease, width 0.3s ease",
           ml: sidebarOffset,
           backgroundColor: "#f5f6fa",
           minHeight: "100vh",
+          overflow: "auto",
         }}
       >
         <Toolbar />

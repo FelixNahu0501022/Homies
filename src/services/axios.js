@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api', // backend local
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api', // backend local
   withCredentials: true,
   timeout: 15000,
 });
@@ -15,5 +15,19 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Interceptor de respuesta (Manejo de errores globales)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Token expirado o inválido
+      localStorage.removeItem('token');
+      // Redirigir al login (forzando recarga para limpiar estados)
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

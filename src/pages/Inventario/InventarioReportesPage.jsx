@@ -1,1001 +1,708 @@
 // src/pages/Inventario/InventarioReportesPage.jsx
-import {
-  Box, Button, Grid, IconButton, MenuItem, Paper, Tab, Tabs, TextField, Tooltip, Typography
-} from "@mui/material";
-import { Refresh, PictureAsPdf } from "@mui/icons-material";
-import { useEffect, useMemo, useState } from "react";
-import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { Box, Button, Grid, Paper, TextField, Typography, Tabs, Tab, IconButton, MenuItem, Autocomplete } from "@mui/material";
+import { useState, useEffect, useMemo } from "react";
+import { ArrowBack, PictureAsPdf, TableChart, Search } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import Autocomplete from "@mui/material/Autocomplete";
 import Swal from "sweetalert2";
-import debounce from "lodash.debounce";
+import LayoutDashboard from "../../layouts/LayoutDashboard";
+import InventarioDashboard from "./InventarioDashboard";
+import { TablaReporte } from "../../components/reportes";
+import { exportTablePdf } from "../../utils/pdfExport";
+import { exportToExcel } from "../../utils/exportToExcel";
 
+// Services
 import {
-  listarItems, listarUbicaciones, listarCategorias, listarUnidades, listarProveedores,
-  rptStock, rptStockPorCategoria, rptStockPorUbicacion, rptStockPorProveedor, rptBajoStock, rptAgotados,
-  rptMovimientos, rptKardex, rptResumenDiario, rptTopConsumidos, rptMotivos, rptMovPorUbicacion,
-  rptAsignacionesItemVehiculo, rptInventarioPorVehiculo,
-  rptConsumosDirectos, rptConsumosConsolidado, rptTopConsumos,
-  rptEspecificacionesKV, rptEspecificacionesCobertura, rptDatosFaltantes, rptPosiblesDuplicados,
+  listarItems, listarCategorias, listarUnidades, listarUbicaciones, listarProveedores,
   listarVehiculosCatalogo,
-  rptBajas, rptBajasResumen, rptTopBajas,
+  rptStock, rptStockPorCategoria, rptStockPorUbicacion, rptStockPorProveedor,
+  rptBajoStock, rptAgotados,
+  rptKardex, rptTopConsumidos, rptMotivos, rptMovPorUbicacion,
+  rptAsignacionesItemVehiculo, rptInventarioPorVehiculo,
+  rptConsumosDirectos, rptConsumosConsolidado,
+  rptBajas, rptBajasResumen, rptTopBajas
 } from "../../services/inventario.service";
 
-import { exportTablePdf } from "../../utils/pdfExport";
-
-/* =============== Tabla simple =============== */
-function SimpleTable({ rows }) {
-  if (!rows || rows.length === 0) {
-    return <Typography variant="body2" sx={{ p: 2 }}>Sin datos</Typography>;
+// Tipos de reportes organizados por tab (sin resumen_diario que no funciona)
+const REPORTES = {
+  stock: {
+    stock_general: { label: "Stock General", descripcion: "Inventario completo actual" },
+    stock_categoria: { label: "Stock por Categoría", descripcion: "Agrupado por categoría" },
+    stock_ubicacion: { label: "Stock por Ubicación", descripcion: "Agrupado por ubicación" },
+    stock_proveedor: { label: "Stock por Proveedor", descripcion: "Agrupado por proveedor" },
+    bajo_stock: { label: "Items Bajo Stock", descripcion: "Items que requieren reposición" },
+    agotados: { label: "Items Agotados", descripcion: "Items con stock en 0" },
+  },
+  movimientos: {
+    kardex: { label: "Kardex", descripcion: "Historial de movimientos de un item", requiresItem: true },
+    top_consumidos: { label: "Top Consumidos", descripcion: "Items más consumidos" },
+    por_motivo: { label: "Por Motivo", descripcion: "Movimientos agrupados por motivo" },
+    por_ubicacion: { label: "Por Ubicación", descripcion: "Movimientos agrupados por ubicación" },
+  },
+  asignaciones: {
+    asignaciones_item: { label: "Asignaciones Item-Vehículo", descripcion: "Items asignados a vehículos" },
+    inventario_vehiculo: { label: "Inventario por Vehículo", descripcion: "Todo el inventario de un vehículo", requiresVehiculo: true },
+    consumos_directos: { label: "Consumos Directos", descripcion: "Consumos sin asignación" },
+    consumos_consolidado: { label: "Consolidado de Consumos", descripcion: "Total de consumos agrupado" },
+  },
+  bajas: {
+    bajas: { label: "Bajas", descripcion: "Detalle de bajas realizadas" },
+    bajas_resumen: { label: "Resumen de Bajas", descripcion: "Bajas agrupadas" },
+    top_bajas: { label: "Top Bajas", descripcion: "Items con más bajas" },
   }
-  const cols = Object.keys(rows[0] || {});
-  return (
-    <Box sx={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {cols.map(c => (
-              <th key={c} style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #eee" }}>
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={idx} style={{ borderBottom: "1px solid #f5f5f5" }}>
-              {cols.map(c => (
-                <td key={c} style={{ padding: "8px", verticalAlign: "top" }}>
-                  {Array.isArray(r[c]) ? r[c].join(", ") : String(r[c] ?? "")}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Box>
-  );
-}
-
-/* =============== Helpers & mapping =============== */
-function firstNonEmpty(...vals) {
-  for (const v of vals) {
-    if (v === 0) return 0;
-    if (v !== null && v !== undefined && v !== "" && !Number.isNaN(v)) return v;
-  }
-  return undefined;
-}
-function yesNo(v) { return v ? "Sí" : "No"; }
-
-function buildMap(arr, preferIdKeyStartsWith = "id") {
-  const map = new Map();
-  (arr || []).forEach((o) => {
-    const keys = Object.keys(o || {});
-    const idKey = keys.find(k => k.toLowerCase().startsWith(preferIdKeyStartsWith)) || keys.find(k => /^id/i.test(k));
-    const id = idKey ? o[idKey] : undefined;
-    const nombre = o.nombre ?? o.descripcion ?? o.etiqueta ?? o.alias ?? null;
-    if (id != null && nombre) map.set(Number(id), String(nombre));
-  });
-  return map;
-}
-
-function useCatalogMaps({ items, categorias, unidades, ubicaciones, proveedores }) {
-  const mItems = useMemo(() => buildMap(items, "iditem"), [items]);
-  const mCats  = useMemo(() => buildMap(categorias, "idcategoria"), [categorias]);
-  const mUnis  = useMemo(() => buildMap(unidades, "idunidad"), [unidades]);
-  const mUbis  = useMemo(() => buildMap(ubicaciones, "idubicacion"), [ubicaciones]);
-  const mProvs = useMemo(() => buildMap(proveedores, "idproveedor"), [proveedores]);
-
-  const itName  = (id, fallback) => (id == null ? (fallback ?? "—") : (mItems.get(Number(id))  ?? (fallback ?? "—")));
-  const catName = (id, fallback) => (id == null ? (fallback ?? "—") : (mCats.get(Number(id))   ?? (fallback ?? "—")));
-  const uniName = (id, fallback) => (id == null ? (fallback ?? "—") : (mUnis.get(Number(id))   ?? (fallback ?? "—")));
-  const ubiName = (id, fallback) => (id == null ? (fallback ?? "—") : (mUbis.get(Number(id))   ?? (fallback ?? "—")));
-  const prvName = (id, fallback) => (id == null ? (fallback ?? "—") : (mProvs.get(Number(id))  ?? (fallback ?? "—")));
-  return { itName, catName, uniName, ubiName, prvName };
-}
-
-// IDs/labels robustos para los Autocomplete
-const itemIdOf  = (o) => Number(o?.iditem ?? o?.idItem ?? o?.id ?? o?.itemId ?? o?.inventarioId);
-const itemLabel = (o) =>
-  [o?.nombre, o?.descripcion, o?.etiqueta, o?.alias, o?.item, o?.producto]
-    .find((v) => v && String(v).trim()) || "";
-
-const ubiIdOf   = (o) => Number(o?.idubicacion ?? o?.idUbicacion ?? o?.id ?? o?.ubicacionId);
-const ubiLabel  = (o) => [o?.nombre, o?.etiqueta, o?.alias].find(v => v && String(v).trim()) || "";
-
-function vehLabelFromRecord(r) {
-  if (!r || typeof r !== "object") return "Vehículo";
-  const kNom = Object.keys(r).find(k => /nomin|nomen|denomin/i.test(k));
-  if (kNom && r[kNom]) return String(r[kNom]);
-  const alt = r.nombrevehiculo ?? r.nombreVehiculo ?? r.alias ?? r.codigo ?? r.nombre;
-  if (alt) return String(alt);
-  const kPlaca  = Object.keys(r).find(k => /placa/i.test(k));
-  const kMarca  = Object.keys(r).find(k => /marca/i.test(k));
-  const kModelo = Object.keys(r).find(k => /modelo/i.test(k));
-  const composed = [r[kPlaca], r[kMarca], r[kModelo]].filter(Boolean).join(" ");
-  if (composed) return composed;
-  return "Vehículo";
-}
-function buildVehMap(vehiculos) {
-  const map = new Map();
-  (vehiculos || []).forEach(v => {
-    const idKey = Object.keys(v).find(k => /^id.?vehiculo$/i.test(k)) || "idvehiculo";
-    const id = v[idKey];
-    if (id == null) return;
-    map.set(Number(id), vehLabelFromRecord(v));
-  });
-  return map;
-}
-
-const tipoLabel = (t) => {
-  const T = String(t || "").toUpperCase();
-  if (T === "IN") return "Entrada";
-  if (T === "OUT") return "Salida";
-  return t ?? "—";
 };
-
-/* =============== Transformadores =============== */
-const tr = {
-  stock: (rows, { catName, uniName, ubiName, prvName }) =>
-    (rows || []).map(r => ({
-      Ítem: firstNonEmpty(r.nombre, r.item, r.producto, "—"),
-      Descripción: firstNonEmpty(r.descripcion, r.descripcion_item, "—"),
-      Categoría: catName(r.idcategoria ?? r.idCategoria, firstNonEmpty(r.categoria, r.nombre_categoria)),
-      Unidad:    uniName(r.idunidad ?? r.idUnidad, firstNonEmpty(r.unidad, r.nombre_unidad)),
-      Ubicación: ubiName(r.idubicacion ?? r.idUbicacion, firstNonEmpty(r.ubicacion, r.nombre_ubicacion)),
-      Proveedor: prvName(r.idproveedor ?? r.idProveedor, firstNonEmpty(r.proveedor, r.nombre_proveedor)),
-      Cantidad: firstNonEmpty(r.cantidad, r.stock, 0),
-      Estado: firstNonEmpty(r.estado, "—"),
-    })),
-
-  stockAgrupado: (rows, label, mapFn) =>
-    (rows || []).map(r => {
-      const idCat = r.idcategoria ?? r.idCategoria;
-      const idUbi = r.idubicacion ?? r.idUbicacion;
-      const idPrv = r.idproveedor ?? r.idProveedor;
-      const etiqueta = firstNonEmpty(
-        mapFn(idCat ?? idUbi ?? idPrv, undefined),
-        r[label.toLowerCase()], r.nombre, r.etiqueta, r.categoria, r.ubicacion, r.proveedor, "—"
-      );
-      return {
-        [label]: etiqueta,
-        Ítems: firstNonEmpty(r.items, r.total_items, r.totalItems, r.materiales, 0),
-        "Total Cantidad": firstNonEmpty(r.total_cantidad, r.totalCantidad, r.cantidad_total, r.cantidad, 0),
-      };
-    }),
-
-  bajoAgotados: (rows) =>
-    (rows || []).map(r => ({
-      Ítem: firstNonEmpty(r.nombre, r.item, "—"),
-      Descripción: firstNonEmpty(r.descripcion, "—"),
-      Cantidad: firstNonEmpty(r.cantidad, r.stock, 0),
-      Estado: firstNonEmpty(r.estado, "—"),
-    })),
-
-  movimientosFlat: (rows, { itName, ubiName }) =>
-    (rows || []).map(r => ({
-      Fecha: r.fecha,
-      Tipo: tipoLabel(r.tipo),
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      Cantidad: firstNonEmpty(r.cantidad, 0),
-      "Ubicación Origen": ubiName(r.srcubicacion ?? r.srcUbicacion, r.ubicacion_origen ?? r.origen ?? r.srcNombre),
-      "Ubicación Destino": ubiName(r.dstubicacion ?? r.dstUbicacion, r.ubicacion_destino ?? r.destino ?? r.dstNombre),
-      Motivo: firstNonEmpty(r.motivo, "—"),
-      Referencia: firstNonEmpty(r.referencia, "Sin referencia"),
-    })),
-
-  kardex: (rows, { itName, ubiName }) =>
-    (rows || []).map(r => ({
-      Fecha: r.fecha,
-      Tipo: tipoLabel(r.tipo),
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      Cantidad: firstNonEmpty(r.cantidad, 0),
-      "Ubicación Origen": ubiName(r.srcubicacion ?? r.srcUbicacion, r.ubicacion_origen ?? r.origen ?? r.srcNombre),
-      "Ubicación Destino": ubiName(r.dstubicacion ?? r.dstUbicacion, r.ubicacion_destino ?? r.destino ?? r.dstNombre),
-      Motivo: firstNonEmpty(r.motivo, "—"),
-    })),
-
-  // <- Cambiado: detecta iditem en cada fila; si no hay, usa etiqueta global
-  resumenDiario: (rows, maps, itemNameFallback) =>
-    (rows || []).map(r => {
-      const itemFromRow = r.iditem ?? r.idItem;
-      const etiqueta = itemFromRow != null
-        ? maps.itName(itemFromRow)
-        : (itemNameFallback ?? "Todos los ítems");
-      return {
-        Día: firstNonEmpty(r.dia, r.fecha, ""),
-        Ítem: etiqueta,
-        Entradas: firstNonEmpty(r.total_in, r.entradas, 0),
-        Salidas: firstNonEmpty(r.total_out, r.salidas, 0),
-        Movimientos: firstNonEmpty(r.movimientos, 0),
-      };
-    }),
-
-  topConsumidos: (rows, { itName }) =>
-    (rows || []).map(r => ({
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      "Total de salidas": firstNonEmpty(r.total_out, r.total_consumido, r.salidas, 0),
-    })),
-
-  // <- Cambiado: detecta por fila; si trae iditem lo nombra, si no usa fallback
-  motivos: (rows, maps, itemNameFallback) =>
-    (rows || []).map(r => {
-      const itemFromRow = r.iditem ?? r.idItem; // si el SQL trae iditem en el grupo
-      const etiqueta = itemFromRow != null
-        ? maps.itName(itemFromRow)
-        : (itemNameFallback ?? "Todos los ítems");
-      return {
-        Ítem: etiqueta,
-        Motivo: firstNonEmpty(r.motivo, "—"),
-        Tipo: tipoLabel(r.tipo),
-        Movimientos: firstNonEmpty(r.movimientos, 0),
-        Cantidad: firstNonEmpty(r.total_cantidad, r.cantidad, 0),
-      };
-    }),
-
-  movPorUbi: (rows, { ubiName }) =>
-    (rows || []).map(r => ({
-      Ubicación: ubiName(r.idubicacion ?? r.idUbicacion, r.ubicacion ?? r.nombre_ubicacion),
-      "Entradas en la ubicación": firstNonEmpty(r.in_en_ubi, r.entradas, 0),
-      "Salidas desde la ubicación": firstNonEmpty(r.out_desde_ubi, r.salidas, 0),
-      Movimientos: firstNonEmpty(r.movimientos, 0),
-    })),
-
-  // ---- ASIGNACIONES ----
-  asignacionesItemVeh_grouped: (rows, vehMap) => {
-    const acc = new Map();
-    for (const r of (rows || [])) {
-      const idVeh = firstNonEmpty(r.idvehiculo, r.idVehiculo, r.vehiculo_id, r.id);
-      const etiqueta = idVeh != null ? (vehMap.get(Number(idVeh)) || vehLabelFromRecord(r)) : vehLabelFromRecord(r);
-      const key = etiqueta;
-      const prev = acc.get(key) || { Vehículo: etiqueta, Cantidad: 0, _items: new Set() };
-      const cant = Number(firstNonEmpty(r.cantidad, r.total_cantidad, 0));
-      if (Number.isFinite(cant)) prev.Cantidad += cant;
-      const idItem = Number(firstNonEmpty(r.iditem, r.idItem));
-      if (Number.isFinite(idItem)) prev._items.add(idItem);
-      acc.set(key, prev);
-    }
-    return Array.from(acc.values()).map(v => ({ Vehículo: v.Vehículo, Cantidad: v.Cantidad, "Ítems distintos": v._items.size }));
-  },
-
-  invPorVeh_grouped_from: (rowsPv, rowsIv, vehMap) => {
-    const acc = new Map();
-    for (const r of (rowsIv || [])) {
-      const idVeh = firstNonEmpty(r.idvehiculo, r.idVehiculo, r.vehiculo_id, r.id);
-      const etiqueta = idVeh != null ? (vehMap.get(Number(idVeh)) || vehLabelFromRecord(r)) : vehLabelFromRecord(r);
-      const key = etiqueta;
-      const prev = acc.get(key) || { Vehículo: etiqueta, Ítems: new Set(), "Total Cantidad": 0 };
-      const idItem = Number(firstNonEmpty(r.iditem, r.idItem));
-      if (Number.isFinite(idItem)) prev.Ítems.add(idItem);
-      const cant = Number(firstNonEmpty(r.cantidad, r.total_cantidad, 0));
-      if (Number.isFinite(cant)) prev["Total Cantidad"] += cant;
-      acc.set(key, prev);
-    }
-    if (acc.size === 0) {
-      for (const r of (rowsPv || [])) {
-        const idVeh = firstNonEmpty(r.idvehiculo, r.idVehiculo, r.vehiculo_id, r.id);
-        const etiqueta = idVeh != null ? (vehMap.get(Number(idVeh)) || vehLabelFromRecord(r)) : vehLabelFromRecord(r);
-        const key = etiqueta;
-        const prev = acc.get(key) || { Vehículo: etiqueta, Ítems: new Set(), "Total Cantidad": 0 };
-        const items = Number(firstNonEmpty(r.items, r.total_items, r.totalItems, r.materiales, 0));
-        const cant = Number(firstNonEmpty(r.total_cantidad, r.totalCantidad, r.cantidad_total, r.cantidad, 0));
-        if (Number.isFinite(items) && items > 0) prev.Ítems = { size: items };
-        if (Number.isFinite(cant)) prev["Total Cantidad"] += cant;
-        acc.set(key, prev);
-      }
-    }
-    return Array.from(acc.values()).map(v => ({
-      Vehículo: v.Vehículo,
-      Ítems: v.Ítems.size ?? 0,
-      "Total Cantidad": v["Total Cantidad"],
-    }));
-  },
-
-  // ---- BAJAS ----
-  bajasDetalle: (rows, { itName, ubiName }) =>
-    (rows || []).map(r => ({
-      Fecha: r.fecha,
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      Cantidad: firstNonEmpty(r.cantidad, 0),
-      "Ubicación Origen": ubiName(r.srcubicacion ?? r.srcUbicacion, r.ubicacion_origen ?? r.origen ?? r.srcNombre),
-      Motivo: firstNonEmpty(r.motivo, "—"),
-      Referencia: firstNonEmpty(r.referencia, "Sin referencia"),
-    })),
-
-  bajasResumen: (rows, maps, fallback) =>
-    (rows || []).map(r => ({
-      Día: firstNonEmpty(r.dia, ""),
-      Ítem: (r.iditem != null ? maps.itName(r.iditem) : (fallback ?? "Todos los ítems")),
-      "Bajas (cantidad)": firstNonEmpty(r.total_bajas, r.cantidad, 0),
-      Registros: firstNonEmpty(r.lineas, r.registros, 0),
-    })),
-
-  topBajas: (rows, { itName }) =>
-    (rows || []).map(r => ({
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      "Total de bajas": firstNonEmpty(r.total_bajas, r.cantidad, 0),
-    })),
-
-  especificacionesKV: (rows, { itName }, itemNombreForzado) =>
-    (rows || []).map(r => ({
-      Ítem: itemNombreForzado || itName(r.iditem ?? r.idItem, r.nombre_item) || "Ítem",
-      Atributo: firstNonEmpty(r.atributo, r.key, "—"),
-      Valor: firstNonEmpty(r.valor, r.value, "—"),
-    })),
-
-  coberturaEspec: (rowOrArr) => {
-    const rows = Array.isArray(rowOrArr) ? rowOrArr : [rowOrArr];
-    return rows.map(r => ({
-      "Ítems con especificaciones": firstNonEmpty(r.items_con_especificaciones, 0),
-      "Ítems sin especificaciones": firstNonEmpty(r.items_sin_especificaciones, 0),
-      "Ítems totales": firstNonEmpty(r.items_totales, 0),
-      "% con especificaciones": firstNonEmpty(r.porcentaje_con_especificaciones, 0),
-    }));
-  },
-
-  datosFaltantes: (rows, { itName }) =>
-    (rows || []).map(r => ({
-      Ítem: itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-      "Sin categoría": yesNo(firstNonEmpty(r.sin_categoria, false)),
-      "Sin unidad": yesNo(firstNonEmpty(r.sin_unidad, false)),
-      "Sin ubicación": yesNo(firstNonEmpty(r.sin_ubicacion, false)),
-      "Sin proveedor": yesNo(firstNonEmpty(r.sin_proveedor, false)),
-    })),
-
-  posiblesDuplicados: (rows, { catName, uniName, ubiName, prvName }) =>
-    (rows || []).map(r => ({
-      Ítem: firstNonEmpty(r.nombre, r.item, "—"),
-      Descripción: firstNonEmpty(r.descripcion, "—"),
-      Categoría: catName(r.idcategoria ?? r.idCategoria, firstNonEmpty(r.categoria, r.nombre_categoria)),
-      Unidad:    uniName(r.idunidad ?? r.idUnidad, firstNonEmpty(r.unidad, r.nombre_unidad)),
-      Ubicación: ubiName(r.idubicacion ?? r.idUbicacion, firstNonEmpty(r.ubicacion, r.nombre_ubicacion)),
-      Proveedor: prvName(r.idproveedor ?? r.idProveedor, firstNonEmpty(r.proveedor, r.nombre_proveedor)),
-      Cantidad: firstNonEmpty(r.cantidad, 0),
-      Estado: firstNonEmpty(r.estado, "—"),
-    })),
-};
-
-function makePdfColumns(rows) {
-  if (!rows || rows.length === 0) return [];
-  return Object.keys(rows[0]).map(k => ({ header: k, dataKey: k }));
-}
-function exportPdfAuto({ title, subtitle, rows, filename = "reporte.pdf", orientation = "portrait" }) {
-  if (!rows || rows.length === 0) {
-    Swal.fire("Aviso", "No hay datos para exportar", "info");
-    return;
-  }
-  const columns = makePdfColumns(rows);
-  exportTablePdf({ title, subtitle, columns, rows, filename, orientation });
-}
-
-/* =============== Componente principal =============== */
-const TABS = [
-  { key: "stock", label: "Stock" },
-  { key: "mov", label: "Movimientos" },
-  { key: "cons", label: "Consumos" },
-  { key: "asig", label: "Asignaciones" },
-  { key: "calidad", label: "Calidad & Especificaciones" },
-  { key: "bajas", label: "Bajas" },
-];
-
-const TIPO_OPTIONS = [
-  { value: "",  label: "Todos" },
-  { value: "IN",  label: "Entrada" },
-  { value: "OUT", label: "Salida" },
-];
 
 export default function InventarioReportesPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("stock");
 
-  // Catálogos
-  const [items, setItems] = useState([]);
-  const [ubis, setUbis] = useState([]);
-  const [cats, setCats] = useState([]);
-  const [unis, setUnis] = useState([]);
-  const [provs, setProvs] = useState([]);
-  const catalogsReady = !!(items.length && ubis.length && cats.length && unis.length && provs.length);
+  // Tab state
+  const [tabActual, setTabActual] = useState(0);
 
-  // Vehículos
-  const [vehList, setVehList] = useState([]);
-  const vehMap = useMemo(() => buildVehMap(Array.isArray(vehList) ? vehList : []), [vehList]);
+  // Report state
+  const [reporteSeleccionado, setReporteSeleccionado] = useState("");
+  const [datos, setDatos] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Filtros
-  const [tipo, setTipo] = useState("");
-  const [itemSel, setItemSel] = useState(null);
-  const [ubiSel, setUbiSel] = useState(null);
+  // Search
+  const [busqueda, setBusqueda] = useState("");
+
+  // Filters
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [itemSel, setItemSel] = useState(null);
+  const [vehiculoSel, setVehiculoSel] = useState(null);
 
-  // Datos
-  const [dataStock, setDataStock] = useState({ stock: [], porCategoria: [], porUbicacion: [], porProveedor: [], bajo: [], agotados: [] });
-  const [dataMov, setDataMov] = useState({ movimientos: [], kardex: [], resumen: [], top: [], motivos: [], movUbi: [] });
-  const [dataCons, setDataCons] = useState({ directos: [], consolidado: [], top: [] });
-  const [dataAsig, setDataAsig] = useState({ itemVeh: [], porVeh: [] });
-  const [dataCalidad, setDataCalidad] = useState({ kv: [], cobertura: [], faltantes: [], duplicados: [] });
-  const [dataBajas, setDataBajas] = useState({ detalle: [], resumen: [], top: [] });
+  // Catalogs
+  const [items, setItems] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [unidades, setUnidades] = useState([]);
+  const [ubicaciones, setUbicaciones] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
+  const [vehiculos, setVehiculos] = useState([]);
 
-  /* -------- Carga catálogos -------- */
+  // Load catalogs
   useEffect(() => {
-    (async () => {
-      try {
-        const [its, ubic, c, u, p, vehs] = await Promise.all([
-          listarItems(), listarUbicaciones(), listarCategorias(), listarUnidades(), listarProveedores(), listarVehiculosCatalogo(),
-        ]);
-        setItems(its || []); setUbis(ubic || []); setCats(c || []); setUnis(u || []); setProvs(p || []); setVehList(vehs || []);
-      } catch (e) {
-        const msg = e?.response?.data?.mensaje || e?.message || "No se pudo cargar catálogos";
-        Swal.fire("Error", msg, "error");
-      }
-    })();
+    cargarCatalogos();
   }, []);
 
-  // Autocompletar ubicación por ítem
-  useEffect(() => {
-    if (!itemSel) return;
-    const idUbiItem = Number(itemSel?.idubicacion ?? itemSel?.idUbicacion ?? itemSel?.ubicacionId ?? itemSel?.idUbi);
-    if (!idUbiItem) return;
-    const found = (ubis || []).find(u => Number(ubiIdOf(u)) === idUbiItem);
-    if (found) setUbiSel(found);
-  }, [itemSel, ubis]);
-
-  // Limpiar ubicación/tipo si se borra el ítem
-  useEffect(() => {
-    if (!itemSel) { setUbiSel(null); setTipo(""); }
-  }, [itemSel]);
-
-  // Maps nombres
-  const maps = useCatalogMaps({ items, categorias: cats, unidades: unis, ubicaciones: ubis, proveedores: provs });
-
-  // Selección
-  const idItem = itemSel ? itemIdOf(itemSel) : undefined;
-  const itemNameSelected = itemLabel(itemSel);
-  const itemFilterName = (itemNameSelected && itemNameSelected.trim()) || (idItem != null ? maps.itName(idItem) : null) || "Todos los ítems";
-  const idUbicacion = ubiSel ? ubiIdOf(ubiSel) : undefined;
-
-  /* -------- Cargas por pestaña -------- */
-  const cargarStock = async () => {
+  const cargarCatalogos = async () => {
     try {
-      const [st, cat, ubi, prov, bajo, agot] = await Promise.all([
-        rptStock(), rptStockPorCategoria(), rptStockPorUbicacion(), rptStockPorProveedor(), rptBajoStock(), rptAgotados()
+      const [its, cats, unis, ubis, provs, vehs] = await Promise.all([
+        listarItems().catch(() => []),
+        listarCategorias().catch(() => []),
+        listarUnidades().catch(() => []),
+        listarUbicaciones().catch(() => []),
+        listarProveedores().catch(() => []),
+        listarVehiculosCatalogo().catch(() => [])
       ]);
-      setDataStock({
-        stock: tr.stock(st, maps),
-        porCategoria: tr.stockAgrupado(cat, "Categoría", maps.catName),
-        porUbicacion: tr.stockAgrupado(ubi, "Ubicación", maps.ubiName),
-        porProveedor: tr.stockAgrupado(prov, "Proveedor", maps.prvName),
-        bajo: tr.bajoAgotados(bajo),
-        agotados: tr.bajoAgotados(agot),
+      setItems(its);
+      setCategorias(cats);
+      setUnidades(unis);
+      setUbicaciones(ubis);
+      setProveedores(provs);
+      setVehiculos(vehs);
+    } catch (error) {
+      console.error("Error cargando catálogos:", error);
+    }
+  };
+
+  // Catalog maps
+  const maps = useMemo(() => {
+    const buildMap = (arr, idKey, nameKey) => {
+      const map = new Map();
+      (arr || []).forEach(item => {
+        const id = item[idKey];
+        const nombre = item[nameKey] || item.nombre || item.etiqueta;
+        if (id && nombre) map.set(Number(id), String(nombre));
       });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Stock", "error");
-    }
-  };
+      return map;
+    };
 
-  const fetchMovimientosConFallback = async (qBase) => {
-    let movs = await rptMovimientos(qBase);
-    if (!movs || movs.length === 0) {
-      const qSinUbi = { ...qBase }; delete qSinUbi.idUbicacion;
-      movs = await rptMovimientos(qSinUbi);
-    }
-    return movs;
-  };
+    const itemMap = buildMap(items, 'iditem', 'nombre');
+    const catMap = buildMap(categorias, 'idcategoria', 'nombre');
+    const uniMap = buildMap(unidades, 'idunidad', 'nombre');
+    const ubiMap = buildMap(ubicaciones, 'idubicacion', 'nombre');
+    const provMap = buildMap(proveedores, 'idproveedor', 'nombre');
+    const vehMap = buildMap(vehiculos, 'idvehiculo', 'nominacion');
 
-  const cargarMov = async () => {
+    return {
+      item: (id, fallback = "—") => itemMap.get(Number(id)) || fallback,
+      categoria: (id, fallback = "—") => catMap.get(Number(id)) || fallback,
+      unidad: (id, fallback = "—") => uniMap.get(Number(id)) || fallback,
+      ubicacion: (id, fallback = "—") => ubiMap.get(Number(id)) || fallback,
+      proveedor: (id, fallback = "—") => provMap.get(Number(id)) || fallback,
+      vehiculo: (id, fallback = "—") => vehMap.get(Number(id)) || fallback,
+    };
+  }, [items, categorias, unidades, ubicaciones, proveedores, vehiculos]);
+
+  const generarReporte = async () => {
+    if (!reporteSeleccionado) {
+      Swal.fire("Aviso", "Selecciona un tipo de reporte", "info");
+      return;
+    }
+
+    setLoading(true);
+    setBusqueda(""); // Clear search when generating new report
+
     try {
-      const qBase = {
-        ...(tipo ? { tipo } : {}),
-        ...(idItem ? { idItem } : {}),
-        ...(idUbicacion ? { idUbicacion } : {}),
-        ...(desde ? { desde } : {}),
-        ...(hasta ? { hasta } : {}),
-      };
-      const [movs, kdx, res, top, mot, mubi] = await Promise.all([
-        fetchMovimientosConFallback(qBase),
-        rptKardex(qBase),
-        rptResumenDiario({ desde, hasta, ...(idItem ? { idItem } : {}) }),
-        rptTopConsumidos({ limit: 20 }),
-        rptMotivos({ ...(idItem ? { idItem } : {}), ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) }),
-        rptMovPorUbicacion()
-      ]);
-      setDataMov({
-        movimientos: tr.movimientosFlat(movs, maps),
-        kardex: tr.kardex(kdx, maps),
-        resumen: tr.resumenDiario(res, maps, itemFilterName),
-        top: tr.topConsumidos(top, maps),
-        motivos: tr.motivos(mot, maps, itemFilterName),
-        movUbi: tr.movPorUbi(mubi, maps),
-      });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Movimientos", "error");
-    }
-  };
-
-  const fetchConsumosConFallback = async (qBase) => {
-    let dir = await rptConsumosDirectos(qBase);
-    if (!dir || dir.length === 0) {
-      const qSinUbi = { ...qBase }; delete qSinUbi.idUbicacion;
-      dir = await rptConsumosDirectos(qSinUbi);
-    }
-    return dir;
-  };
-
-  const cargarCons = async () => {
-    try {
-      const qBase = {
-        ...(idItem ? { idItem } : {}),
-        ...(idUbicacion ? { idUbicacion } : {}),
-        ...(desde ? { desde } : {}),
-        ...(hasta ? { hasta } : {}),
-      };
-      const [dir, con, top] = await Promise.all([
-        fetchConsumosConFallback(qBase),
-        rptConsumosConsolidado({ ...(idItem ? { idItem } : {}), ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) }),
-        rptTopConsumos({ limit: 20 })
-      ]);
-      setDataCons({
-        directos: dir.map(r => ({
-          Fecha: r.fecha,
-          Ítem: maps.itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-          Cantidad: firstNonEmpty(r.cantidad, 0),
-          Motivo: firstNonEmpty(r.motivo, "—"),
-        })),
-        consolidado: con.map(r => ({
-          Fecha: r.fecha,
-          Ítem: maps.itName(r.iditem ?? r.idItem, r.nombre_item ?? r.item),
-          Fuente: r.fuente === "CG" ? "Consumo Directo" : "Salida",
-          Cantidad: firstNonEmpty(r.cantidad, 0),
-          Motivo: firstNonEmpty(r.motivo, "—"),
-        })),
-        top: tr.topConsumidos(top, maps),
-      });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Consumos", "error");
-    }
-  };
-
-  const cargarAsig = async () => {
-    try {
-      const [iv, pv] = await Promise.all([
-        rptAsignacionesItemVehiculo(idItem ? { idItem } : undefined),
-        rptInventarioPorVehiculo()
-      ]);
-      setDataAsig({
-        itemVeh: tr.asignacionesItemVeh_grouped(iv, vehMap),
-        porVeh: tr.invPorVeh_grouped_from(pv, iv, vehMap),
-      });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Asignaciones", "error");
-    }
-  };
-
-  const cargarCalidad = async () => {
-    try {
-      const [kv, cob, falt, dup] = await Promise.all([
-        rptEspecificacionesKV(idItem ? { idItem } : undefined),
-        rptEspecificacionesCobertura(),
-        rptDatosFaltantes(),
-        rptPosiblesDuplicados()
-      ]);
-      const itemNombreForzado = itemLabel(itemSel) || (idItem ? maps.itName(idItem) : undefined);
-      setDataCalidad({
-        kv: tr.especificacionesKV(kv, maps, itemNombreForzado),
-        cobertura: tr.coberturaEspec(cob),
-        faltantes: tr.datosFaltantes(falt, maps),
-        duplicados: tr.posiblesDuplicados(dup, maps),
-      });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Calidad", "error");
-    }
-  };
-
-  const cargarBajas = async () => {
-    try {
+      let resultado = [];
       const params = {
-        ...(idItem ? { idItem } : {}),
-        ...(idUbicacion ? { idUbicacion } : {}),
-        ...(desde ? { desde } : {}),
-        ...(hasta ? { hasta } : {}),
+        ...(desde && { desde }),
+        ...(hasta && { hasta }),
+        ...(itemSel && { idItem: itemSel.iditem }),
+        ...(vehiculoSel && { idVehiculo: vehiculoSel.idvehiculo })
       };
-      const [detalle, resumen, top] = await Promise.all([
-        rptBajas(params),
-        rptBajasResumen({ desde: params?.desde, hasta: params?.hasta, ...(params?.idItem ? { idItem: params.idItem } : {}) }),
-        rptTopBajas({ limit: 20 })
-      ]);
-      setDataBajas({
-        detalle: tr.bajasDetalle(detalle || [], maps),
-        resumen: tr.bajasResumen(resumen || [], maps, itemFilterName),
-        top: tr.topBajas(top || [], maps),
-      });
-    } catch (e) {
-      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "No se pudo cargar Bajas", "error");
+
+      console.log(`DEBUG - Generando reporte: ${reporteSeleccionado}`, params);
+
+      switch (reporteSeleccionado) {
+        // STOCK Y EXISTENCIAS
+        case 'stock_general': {
+          const data = await rptStock();
+          console.log('DEBUG - Stock general:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: r.nombre || r.item || "—",
+            Descripción: r.descripcion || "—",
+            Categoría: maps.categoria(r.idcategoria, r.categoria),
+            Ubicación: maps.ubicacion(r.idubicacion, r.ubicacion),
+            Cantidad: r.cantidad || r.stock || 0,
+            Unidad: maps.unidad(r.idunidad, r.unidad),
+            Estado: r.estado || "—"
+          }));
+          break;
+        }
+
+        case 'stock_categoria': {
+          const data = await rptStockPorCategoria();
+          console.log('DEBUG - Stock categoría:', data);
+          resultado = (data || []).map(r => ({
+            Categoría: maps.categoria(r.idcategoria, r.categoria || r.nombre),
+            'Total Items': parseInt(r.items || r.total_items || 0),
+            'Total Cantidad': r.total_cantidad || r.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'stock_ubicacion': {
+          const data = await rptStockPorUbicacion();
+          console.log('DEBUG - Stock ubicación:', data);
+          resultado = (data || []).map(r => ({
+            Ubicación: maps.ubicacion(r.idubicacion, r.ubicacion || r.nombre),
+            'Total Items': parseInt(r.items || r.total_items || 0),
+            'Total Cantidad': r.total_cantidad || r.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'stock_proveedor': {
+          const data = await rptStockPorProveedor();
+          console.log('DEBUG - Stock proveedor:', data);
+          resultado = (data || []).map(r => ({
+            Proveedor: maps.proveedor(r.idproveedor, r.proveedor || r.nombre),
+            'Total Items': parseInt(r.items || r.total_items || 0),
+            'Total Cantidad': r.total_cantidad || r.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'bajo_stock': {
+          const data = await rptBajoStock();
+          console.log('DEBUG - Bajo stock:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: r.nombre || r.item || "—",
+            Descripción: r.descripcion || "—",
+            Cantidad: r.cantidad || r.stock || 0,
+            'Stock Mínimo': r.stock_minimo || r.minimo || 0,
+            Estado: r.estado || "Bajo Stock"
+          }));
+          break;
+        }
+
+        case 'agotados': {
+          const data = await rptAgotados();
+          console.log('DEBUG - Agotados:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: r.nombre || r.item || "—",
+            Descripción: r.descripcion || "—",
+            Categoría: maps.categoria(r.idcategoria, r.categoria),
+            Estado: "Agotado"
+          }));
+          break;
+        }
+
+        // MOVIMIENTOS
+        case 'kardex': {
+          if (!itemSel) {
+            Swal.fire("Aviso", "Debes seleccionar un item para el Kardex", "warning");
+            return;
+          }
+          const data = await rptKardex(params);
+          console.log('DEBUG - Kardex:', data);
+
+          // Get current stock from selected item
+          const stockActual = itemSel?.cantidad || itemSel?.stock || 0;
+
+          // Calculate initial stock by reversing movements from current stock
+          let saldoInicial = stockActual;
+          const movimientosReversed = [...(data || [])].reverse();
+          movimientosReversed.forEach(r => {
+            const cantidad = r.cantidad || 0;
+            // Going backwards: reverse the logic
+            if (r.tipo === 'IN' || r.tipo === 'in' || r.tipo === 'Entrada') {
+              saldoInicial -= cantidad;
+            } else if (r.tipo === 'OUT' || r.tipo === 'out' || r.tipo === 'Salida') {
+              saldoInicial += cantidad;
+            }
+          });
+
+          // Start with calculated initial stock (never negative)
+          let saldoAcumulado = Math.max(0, saldoInicial);
+
+          resultado = (data || []).map(r => {
+            const cantidad = r.cantidad || 0;
+            // IN adds, OUT subtracts
+            if (r.tipo === 'IN' || r.tipo === 'in' || r.tipo === 'Entrada') {
+              saldoAcumulado += cantidad;
+            } else if (r.tipo === 'OUT' || r.tipo === 'out' || r.tipo === 'Salida') {
+              saldoAcumulado -= cantidad;
+            }
+
+            return {
+              Fecha: r.fecha || "—",
+              Tipo: r.tipo === 'IN' ? 'Entrada' : r.tipo === 'OUT' ? 'Salida' : r.tipo,
+              Cantidad: cantidad,
+              Saldo: Math.max(0, saldoAcumulado), // Never show negative
+              Motivo: r.motivo || "—"
+            };
+          });
+          break;
+        }
+
+        case 'top_consumidos': {
+          const data = await rptTopConsumidos(params);
+          console.log('DEBUG - Top consumidos:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            'Total Consumido': r.total_out || r.total || r.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'por_motivo': {
+          const data = await rptMotivos(params);
+          console.log('DEBUG - Por motivo:', data);
+          resultado = (data || []).map(r => ({
+            Motivo: r.motivo || "—",
+            'Total Movimientos': parseInt(r.movimientos || r.total || r.cantidad || 0)
+          }));
+          break;
+        }
+
+        case 'por_ubicacion': {
+          const data = await rptMovPorUbicacion();
+          console.log('DEBUG - Por ubicación:', data);
+          resultado = (data || []).map(r => {
+            const entradas = r.in_en_ubi || r.entradas || 0;
+            const salidas = r.out_desde_ubi || r.salidas || 0;
+            return {
+              Ubicación: r.idubicacion ? maps.ubicacion(r.idubicacion, r.ubicacion || r.nombre) : "Sin ubicación",
+              Entradas: entradas,
+              Salidas: salidas
+            };
+          });
+          break;
+        }
+
+        // ASIGNACIONES
+        case 'asignaciones_item': {
+          const data = await rptAsignacionesItemVehiculo(params);
+          console.log('DEBUG - Asignaciones:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            Vehículo: maps.vehiculo(r.idvehiculo, r.vehiculo || r.nominacion),
+            Cantidad: r.cantidad || 0
+          }));
+          break;
+        }
+
+        case 'inventario_vehiculo': {
+          if (!vehiculoSel) {
+            Swal.fire("Aviso", "Debes seleccionar un vehículo", "warning");
+            return;
+          }
+          const data = await rptInventarioPorVehiculo(params);
+          console.log('DEBUG - Inventario vehículo:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            Descripción: r.descripcion || "—",
+            Cantidad: r.cantidad || 0,
+            Unidad: maps.unidad(r.idunidad, r.unidad)
+          }));
+          break;
+        }
+
+        case 'consumos_directos': {
+          const data = await rptConsumosDirectos(params);
+          console.log('DEBUG - Consumos directos:', data);
+          resultado = (data || []).map(r => ({
+            Fecha: r.fecha || "—",
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            Cantidad: r.cantidad || 0,
+            Motivo: r.motivo || "—"
+          }));
+          break;
+        }
+
+        case 'consumos_consolidado': {
+          const data = await rptConsumosConsolidado(params);
+          console.log('DEBUG - Consumos consolidado:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            'Total Consumido': r.total || r.cantidad || 0,
+            Unidad: maps.unidad(r.idunidad, r.unidad)
+          }));
+          break;
+        }
+
+        case 'bajas': {
+          const data = await rptBajas(params);
+          console.log('DEBUG - Bajas:', data);
+          resultado = (data || []).map(r => ({
+            Fecha: r.fecha || "—",
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            Cantidad: r.cantidad || 0,
+            Motivo: r.motivo || "—"
+          }));
+          break;
+        }
+
+        case 'bajas_resumen': {
+          const data = await rptBajasResumen(params);
+          console.log('DEBUG - Bajas resumen:', data);
+          resultado = (data || []).map(r => {
+            // Format date
+            let fechaFormateada = r.dia || r.fecha || "—";
+            if (fechaFormateada && fechaFormateada !== "—") {
+              try {
+                const date = new Date(fechaFormateada);
+                if (!isNaN(date.getTime())) {
+                  fechaFormateada = date.toLocaleDateString('es-BO', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                  });
+                }
+              } catch (e) {
+                // Keep original if parsing fails
+              }
+            }
+
+            return {
+              Día: fechaFormateada,
+              'Total Bajas': parseInt(r.total_bajas || r.total || r.cantidad || 0)
+            };
+          });
+          break;
+        }
+
+        case 'top_bajas': {
+          const data = await rptTopBajas(params);
+          console.log('DEBUG - Top bajas:', data);
+          resultado = (data || []).map(r => ({
+            Ítem: maps.item(r.iditem, r.item || r.nombre),
+            'Total Bajas': parseInt(r.total_bajas || r.total || r.cantidad || 0)
+          }));
+          break;
+        }
+
+        default:
+          Swal.fire("Aviso", "Tipo de reporte no implementado", "warning");
+          return;
+      }
+
+      setDatos(resultado);
+
+      if (resultado.length === 0) {
+        Swal.fire("Información", "No se encontraron datos para este reporte", "info");
+      }
+
+    } catch (error) {
+      console.error("Error generando reporte:", error);
+      const mensaje = error?.response?.data?.mensaje || error?.message || "Error al generar el reporte";
+      Swal.fire("Error", mensaje, "error");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const cargarPorTab = async (t) => {
-    if (t === "stock")   return cargarStock();
-    if (t === "mov")     return cargarMov();
-    if (t === "cons")    return cargarCons();
-    if (t === "asig")    return cargarAsig();
-    if (t === "calidad") return cargarCalidad();
-    if (t === "bajas")   return cargarBajas();
+  // Filtered data based on search
+  const datosFiltrados = useMemo(() => {
+    if (!busqueda.trim()) return datos;
+
+    const searchLower = busqueda.toLowerCase();
+    return datos.filter(row =>
+      Object.values(row).some(val =>
+        String(val).toLowerCase().includes(searchLower)
+      )
+    );
+  }, [datos, busqueda]);
+
+  const exportarPDF = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+
+    const reporteInfo = Object.values(REPORTES).flatMap(tab => Object.entries(tab))
+      .find(([key]) => key === reporteSeleccionado);
+
+    const title = reporteInfo ? reporteInfo[1].label : "Reporte de Inventario";
+
+    const columns = Object.keys(datosFiltrados[0]).map(key => ({
+      header: key,
+      dataKey: key
+    }));
+
+    exportTablePdf({
+      title,
+      columns,
+      rows: datosFiltrados,
+      filename: `${reporteSeleccionado}.pdf`
+    });
   };
 
-  // Primera carga cuando catálogos están listos
-  useEffect(() => {
-    if (catalogsReady) cargarPorTab(tab);
-    // eslint-disable-next-line
-  }, [catalogsReady, tab]);
+  const exportarExcel = () => {
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
 
-  // Re-carga con filtros
-  const recargarDebounced = useMemo(() => debounce(() => {
-    if (!catalogsReady) return;
-    if (tab === "mov")     cargarMov();
-    if (tab === "cons")    cargarCons();
-    if (tab === "asig")    cargarAsig();
-    if (tab === "calidad") cargarCalidad();
-    if (tab === "bajas")   cargarBajas();
-  }, 350), [tab, tipo, idItem, idUbicacion, desde, hasta, vehMap, catalogsReady, itemFilterName]);
+    const reporteInfo = Object.values(REPORTES).flatMap(tab => Object.entries(tab))
+      .find(([key]) => key === reporteSeleccionado);
 
-  useEffect(() => {
-    recargarDebounced();
-    return () => recargarDebounced.cancel();
-  }, [tipo, idItem, idUbicacion, desde, hasta, vehMap, itemFilterName, recargarDebounced]);
+    const sheetName = reporteInfo ? reporteInfo[1].label : "Reporte";
 
-  /* -------- UI -------- */
-  const handleClearFilters = () => {
-    setTipo(""); setItemSel(null); setUbiSel(null); setDesde(""); setHasta("");
+    exportToExcel(datosFiltrados, `${reporteSeleccionado}.xlsx`, sheetName);
   };
 
-  const Filtros = (
-    <Grid container spacing={2} sx={{ mb: 1 }}>
-      <Grid item xs={12} sm={3}>
-        <Autocomplete
-          options={items}
-          getOptionLabel={itemLabel}
-          isOptionEqualToValue={(opt, val) => itemIdOf(opt) === itemIdOf(val)}
-          value={itemSel}
-          onChange={(_, v) => setItemSel(v)}
-          renderInput={(p) => <TextField {...p} label="Ítem (opcional)" />}
-          clearOnEscape
-        />
-      </Grid>
-      <Grid item xs={12} sm={3}>
-        <Autocomplete
-          options={ubis}
-          getOptionLabel={ubiLabel}
-          isOptionEqualToValue={(opt, val) => ubiIdOf(opt) === ubiIdOf(val)}
-          value={ubiSel}
-          onChange={(_, v) => setUbiSel(v)}
-          renderInput={(p) => <TextField {...p} label="Ubicación (opcional)" />}
-          clearOnEscape
-        />
-      </Grid>
-      <Grid item xs={6} sm={3} md={2}>
-        <TextField fullWidth type="date" label="Desde" InputLabelProps={{ shrink: true }} value={desde} onChange={(e) => setDesde(e.target.value)} />
-      </Grid>
-      <Grid item xs={6} sm={3} md={2}>
-        <TextField fullWidth type="date" label="Hasta" InputLabelProps={{ shrink: true }} value={hasta} onChange={(e) => setHasta(e.target.value)} />
-      </Grid>
-      {tab === "mov" && (
-        <Grid item xs={12} sm={2}>
-          <TextField select fullWidth label="Tipo de movimiento" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            {TIPO_OPTIONS.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-          </TextField>
-        </Grid>
-      )}
-      <Grid item xs={12} sm="auto">
-        <Button variant="outlined" onClick={handleClearFilters}>Limpiar filtros</Button>
-      </Grid>
-    </Grid>
-  );
+  // Dynamic filters
+  const mostrarFiltroFechas = ['kardex', 'top_consumidos', 'por_motivo',
+    'consumos_directos', 'consumos_consolidado', 'bajas', 'bajas_resumen', 'top_bajas'].includes(reporteSeleccionado);
 
-  const TabStock = (
-    <Box>
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarStock}><Refresh /></IconButton></Tooltip>
-        <Tooltip title="Exportar PDF: Stock general">
-          <IconButton onClick={() => exportPdfAuto({ title: "Stock general", rows: dataStock.stock, filename: "stock.pdf" })}>
-            <PictureAsPdf />
-          </IconButton>
-        </Tooltip>
-      </Box>
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle1" gutterBottom>Stock general</Typography>
-        <SimpleTable rows={dataStock.stock} />
-      </Paper>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Por categoría</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Stock por categoría", rows: dataStock.porCategoria, filename: "stock_por_categoria.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataStock.porCategoria} />
-          </Paper>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Agotados / Baja</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Agotados / Baja", rows: dataStock.agotados, filename: "agotados_baja.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataStock.agotados} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Por ubicación</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Stock por ubicación", rows: dataStock.porUbicacion, filename: "stock_por_ubicacion.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataStock.porUbicacion} />
-          </Paper>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Bajo stock</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Bajo stock", rows: dataStock.bajo, filename: "bajo_stock.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataStock.bajo} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Por proveedor</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Stock por proveedor", rows: dataStock.porProveedor, filename: "stock_por_proveedor.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataStock.porProveedor} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
+  const mostrarFiltroItem = ['kardex'].includes(reporteSeleccionado);
+  const mostrarFiltroVehiculo = ['inventario_vehiculo'].includes(reporteSeleccionado);
 
-  const TabMov = (
-    <Box>
-      {Filtros}
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarMov}><Refresh /></IconButton></Tooltip>
-        <Tooltip title="Exportar PDF: Movimientos (tabla plana)">
-          <IconButton onClick={() => exportPdfAuto({ title: "Movimientos (tabla plana)", rows: dataMov.movimientos, filename: "movimientos.pdf", orientation: "landscape" })}>
-            <PictureAsPdf />
-          </IconButton>
-        </Tooltip>
-      </Box>
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle1" gutterBottom>Movimientos (tabla plana)</Typography>
-        <SimpleTable rows={dataMov.movimientos} />
-      </Paper>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Kárdex</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Kárdex", rows: dataMov.kardex, filename: "kardex.pdf", orientation: "landscape" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataMov.kardex} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Movimientos por ubicación</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Movimientos por ubicación", rows: dataMov.movUbi, filename: "mov_por_ubicacion.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataMov.movUbi} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Resumen diario</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Resumen diario", rows: dataMov.resumen, filename: "resumen_diario.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataMov.resumen} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Motivos</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Motivos de movimiento", rows: dataMov.motivos, filename: "motivos_movimiento.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataMov.motivos} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-
-  const TabCons = (
-    <Box>
-      {Filtros}
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarCons}><Refresh /></IconButton></Tooltip>
-        <Tooltip title="Exportar PDF: Consumos consolidados">
-          <IconButton onClick={() => exportPdfAuto({ title: "Consumos consolidados", rows: dataCons.consolidado, filename: "consumos_consolidado.pdf" })}>
-            <PictureAsPdf />
-          </IconButton>
-        </Tooltip>
-      </Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Consumos directos</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Consumos directos", rows: dataCons.directos, filename: "consumos_directos.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCons.directos} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Consumos consolidados (Salidas + Directos)</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Consumos consolidados (Salidas + Directos)", rows: dataCons.consolidado, filename: "consumos_consolidados.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCons.consolidado} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Top consumos (consolidado)</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Top consumos (consolidado)", rows: dataCons.top, filename: "top_consumos_consolidado.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCons.top} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-
-  const TabAsig = (
-    <Box>
-      <Grid container spacing={2} sx={{ mb: 1 }}>
-        <Grid item xs={12} sm={6}>
-          <Autocomplete
-            options={items}
-            getOptionLabel={itemLabel}
-            isOptionEqualToValue={(opt, val) => itemIdOf(opt) === itemIdOf(val)}
-            value={itemSel}
-            onChange={(_, v) => setItemSel(v)}
-            renderInput={(p) => <TextField {...p} label="Ítem (para ver asignaciones)" />}
-          />
-        </Grid>
-      </Grid>
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarAsig}><Refresh /></IconButton></Tooltip>
-      </Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Asignaciones por Ítem → Vehículo</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Asignaciones por Ítem → Vehículo", rows: dataAsig.itemVeh, filename: "asignaciones_item_vehiculo.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataAsig.itemVeh} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Inventario agregado por Vehículo</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Inventario agregado por Vehículo", rows: dataAsig.porVeh, filename: "inventario_por_vehiculo.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataAsig.porVeh} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-
-  const TabCalidad = (
-    <Box>
-      <Grid container spacing={2} sx={{ mb: 1 }}>
-        <Grid item xs={12} sm={6}>
-          <Autocomplete
-            options={items}
-            getOptionLabel={itemLabel}
-            isOptionEqualToValue={(opt, val) => itemIdOf(opt) === itemIdOf(val)}
-            value={itemSel}
-            onChange={(_, v) => setItemSel(v)}
-            renderInput={(p) => <TextField {...p} label="Ítem (para ver especificaciones KV)" />}
-          />
-        </Grid>
-      </Grid>
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarCalidad}><Refresh /></IconButton></Tooltip>
-      </Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Especificaciones (KV)</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Especificaciones (KV)", rows: dataCalidad.kv, filename: "especificaciones_kv.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCalidad.kv} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Posibles duplicados</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Posibles duplicados", rows: dataCalidad.duplicados, filename: "posibles_duplicados.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCalidad.duplicados} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Cobertura de especificaciones</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Cobertura de especificaciones", rows: Array.isArray(dataCalidad.cobertura) ? dataCalidad.cobertura : [dataCalidad.cobertura], filename: "cobertura_especificaciones.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={Array.isArray(dataCalidad.cobertura) ? dataCalidad.cobertura : [dataCalidad.cobertura]} />
-          </Paper>
-          <Paper sx={{ p: 2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Datos faltantes (catálogos)</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Datos faltantes", rows: dataCalidad.faltantes, filename: "datos_faltantes.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataCalidad.faltantes} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-
-  const TabBajas = (
-    <Box>
-      {Filtros}
-      <Box display="flex" gap={1} justifyContent="flex-end" mb={1}>
-        <Tooltip title="Recargar"><IconButton onClick={cargarBajas}><Refresh /></IconButton></Tooltip>
-        <Tooltip title="Exportar PDF: Bajas (detalle)">
-          <IconButton onClick={() => exportPdfAuto({ title: "Bajas — Detalle", rows: dataBajas.detalle, filename: "bajas_detalle.pdf", orientation: "landscape" })}>
-            <PictureAsPdf />
-          </IconButton>
-        </Tooltip>
-      </Box>
-
-      <Paper sx={{ p:2, mb:2 }}>
-        <Typography variant="subtitle1" gutterBottom>Detalle de bajas</Typography>
-        <SimpleTable rows={dataBajas.detalle} />
-      </Paper>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p:2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Resumen diario</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Bajas — Resumen diario", rows: dataBajas.resumen, filename: "bajas_resumen_diario.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataBajas.resumen} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p:2 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1">Top ítems dados de baja</Typography>
-              <Tooltip title="PDF"><IconButton onClick={() => exportPdfAuto({ title: "Bajas — Top Ítems", rows: dataBajas.top, filename: "bajas_top_items.pdf" })}><PictureAsPdf/></IconButton></Tooltip>
-            </Box>
-            <SimpleTable rows={dataBajas.top} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
-  );
+  // Get reports for current tab
+  const reportesActuales = useMemo(() => {
+    const tabs = ['stock', 'movimientos', 'asignaciones', 'bajas'];
+    if (tabActual === 0) return {}; // Dashboard tab
+    const tabKey = tabs[tabActual - 1];
+    return REPORTES[tabKey] || {};
+  }, [tabActual]);
 
   return (
     <LayoutDashboard>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-        <Typography variant="h5">Reportes de Inventario</Typography>
-        <Box display="flex" gap={1}>
-          <Button variant="outlined" onClick={() => navigate("/inventario")}>Volver a Inventario</Button>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Reportes de Inventario
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Dashboard ejecutivo y reportes detallados
+          </Typography>
         </Box>
+        <Button
+          variant="outlined"
+          startIcon={<ArrowBack />}
+          onClick={() => navigate("/inventario")}
+        >
+          Volver
+        </Button>
       </Box>
 
+      {/* Tabs */}
       <Paper sx={{ mb: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
-          {TABS.map(t => <Tab key={t.key} value={t.key} label={t.label} />)}
+        <Tabs
+          value={tabActual}
+          onChange={(_, newValue) => {
+            setTabActual(newValue);
+            setReporteSeleccionado("");
+            setDatos([]);
+            setBusqueda("");
+          }}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab icon={<TableChart />} label="Resumen Ejecutivo" iconPosition="start" />
+          <Tab label="Stock y Existencias" />
+          <Tab label="Movimientos" />
+          <Tab label="Asignaciones" />
+          <Tab label="Bajas" />
         </Tabs>
       </Paper>
 
-      {tab === "stock"   && <>{TabStock}</>}
-      {tab === "mov"     && <>{TabMov}</>}
-      {tab === "cons"    && <>{TabCons}</>}
-      {tab === "asig"    && <>{TabAsig}</>}
-      {tab === "calidad" && <>{TabCalidad}</>}
-      {tab === "bajas"   && <>{TabBajas}</>}
+      {/* Tab Content */}
+      {tabActual === 0 ? (
+        <InventarioDashboard />
+      ) : (
+        <>
+          {/* Report Selection */}
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Tipo de Reporte"
+                  value={reporteSeleccionado}
+                  onChange={(e) => {
+                    setReporteSeleccionado(e.target.value);
+                    setDatos([]);
+                    setBusqueda("");
+                  }}
+                  helperText={reporteSeleccionado && reportesActuales[reporteSeleccionado]?.descripcion}
+                >
+                  <MenuItem value="">Selecciona un reporte</MenuItem>
+                  {Object.entries(reportesActuales).map(([key, value]) => (
+                    <MenuItem key={key} value={key}>
+                      {value.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              {/* Dynamic Filters */}
+              {reporteSeleccionado && (
+                <>
+                  {mostrarFiltroItem && (
+                    <Grid item xs={12} md={3}>
+                      <Autocomplete
+                        options={items}
+                        getOptionLabel={(opt) => opt.nombre || ""}
+                        value={itemSel}
+                        onChange={(_, v) => setItemSel(v)}
+                        renderInput={(params) => (
+                          <TextField {...params} label="Item *" required />
+                        )}
+                      />
+                    </Grid>
+                  )}
+
+                  {mostrarFiltroVehiculo && (
+                    <Grid item xs={12} md={3}>
+                      <Autocomplete
+                        options={vehiculos}
+                        getOptionLabel={(opt) => opt.nominacion || opt.placa || ""}
+                        value={vehiculoSel}
+                        onChange={(_, v) => setVehiculoSel(v)}
+                        renderInput={(params) => (
+                          <TextField {...params} label="Vehículo *" required />
+                        )}
+                      />
+                    </Grid>
+                  )}
+
+                  {mostrarFiltroFechas && (
+                    <>
+                      <Grid item xs={6} md={2}>
+                        <TextField
+                          fullWidth
+                          type="date"
+                          label="Desde"
+                          InputLabelProps={{ shrink: true }}
+                          value={desde}
+                          onChange={(e) => setDesde(e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={6} md={2}>
+                        <TextField
+                          fullWidth
+                          type="date"
+                          label="Hasta"
+                          InputLabelProps={{ shrink: true }}
+                          value={hasta}
+                          onChange={(e) => setHasta(e.target.value)}
+                        />
+                      </Grid>
+                    </>
+                  )}
+                </>
+              )}
+            </Grid>
+
+            <Box mt={2} display="flex" gap={1}>
+              <Button
+                variant="contained"
+                onClick={generarReporte}
+                disabled={loading || !reporteSeleccionado}
+              >
+                {loading ? "Generando..." : "Generar Reporte"}
+              </Button>
+              {reporteSeleccionado && (
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setReporteSeleccionado("");
+                    setDatos([]);
+                    setBusqueda("");
+                    setItemSel(null);
+                    setVehiculoSel(null);
+                    setDesde("");
+                    setHasta("");
+                  }}
+                >
+                  Limpiar
+                </Button>
+              )}
+            </Box>
+          </Paper>
+
+          {/* Results */}
+          {datos.length > 0 && (
+            <Paper sx={{ p: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+                <Typography variant="h6">
+                  {reportesActuales[reporteSeleccionado]?.label || "Resultados"}
+                </Typography>
+
+                <Box display="flex" gap={1} alignItems="center">
+                  <TextField
+                    size="small"
+                    placeholder="Buscar en resultados..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                      startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+                    }}
+                    sx={{ minWidth: 250 }}
+                  />
+                  <IconButton onClick={exportarExcel} color="success" title="Exportar a Excel">
+                    <TableChart />
+                  </IconButton>
+                  <IconButton onClick={exportarPDF} color="primary" title="Exportar a PDF">
+                    <PictureAsPdf />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              <TablaReporte datos={datosFiltrados} />
+
+              <Typography variant="body2" color="text.secondary" mt={2}>
+                Mostrando {datosFiltrados.length} de {datos.length} registros
+              </Typography>
+            </Paper>
+          )}
+
+          {!loading && datos.length === 0 && reporteSeleccionado && (
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary">
+                Haz clic en "Generar Reporte" para ver los resultados
+              </Typography>
+            </Paper>
+          )}
+        </>
+      )}
     </LayoutDashboard>
   );
 }
+

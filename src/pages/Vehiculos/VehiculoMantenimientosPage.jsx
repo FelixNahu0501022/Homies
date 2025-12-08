@@ -33,26 +33,10 @@ import {
   crearMantenimiento,
   eliminarMantenimiento,
 } from "../../services/vehiculos.service";
+import { resolveFileUrl } from "../../utils/files";
 
 // 🔗 Normaliza las rutas de archivos (PDF, fotos, etc.)
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
 
-  // limpia rutas locales tipo "C:\\...\\archivo.pdf"
-  if (path.includes(":\\") || path.includes(":/")) {
-    path = path.split(/[/\\]/).pop();
-  }
-
-  // elimina prefijos residuales
-  const clean = path.replace(/^\/?api\/?/, "").replace(/^\/?uploads\/?/, "");
-
-  const base =
-    import.meta.env.VITE_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:3000";
-
-  return `${base}/uploads/${clean}`;
-};
 
 // 🔧 Estado a color
 const estadoColor = (estado) => {
@@ -265,7 +249,7 @@ export default function VehiculoMantenimientosPage() {
                   {m.archivopdf ? (
                     <Button
                       size="small"
-                      href={resolveUrl(m.archivopdf)}
+                      href={resolveFileUrl(m.archivopdf)}
                       target="_blank"
                       rel="noopener noreferrer"
                       startIcon={<PictureAsPdf />}

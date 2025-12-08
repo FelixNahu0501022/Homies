@@ -19,15 +19,10 @@ import CreateClaseDialog from "../../components/CreateClaseDialog";
 import CreateGradoDialog from "../../components/CreateGradoDialog";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
 import { useNavigate, useParams } from "react-router-dom";
+import { resolveFileUrl } from "../../utils/files";
 
 /* 🔗 Genera URL absoluta de fotos/documentos */
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
-  const base = import.meta.env.VITE_API_URL || api.defaults.baseURL || "http://localhost:3000";
-  const clean = path.replace(/^\/?api\/?/, "").replace(/^\/?uploads\/?/, "");
-  return `${base.replace(/\/+$/, "")}/uploads/${clean}`;
-};
+
 
 /** ====== Formulario re-usable (modal o página) ====== */
 export function PersonalEditarForm({ id, onSuccess }) {
@@ -296,7 +291,7 @@ export function PersonalEditarForm({ id, onSuccess }) {
           <Grid item xs={12} sm={6}>
             <Box display="flex" alignItems="center" gap={2}>
               <Avatar
-                src={fotoPreview || resolveUrl(fotoActual)}
+                src={fotoPreview || resolveFileUrl(fotoActual)}
                 sx={{ width: 64, height: 64 }}
                 imgProps={{ onError: (e) => (e.currentTarget.src = "") }}
               />
@@ -311,7 +306,7 @@ export function PersonalEditarForm({ id, onSuccess }) {
           <Grid item xs={12} sm={6}>
             <Box display="flex" flexDirection="column" gap={1}>
               {docActual && (
-                <Button variant="text" href={resolveUrl(docActual)} target="_blank" rel="noopener noreferrer">
+                <Button variant="text" href={resolveFileUrl(docActual)} target="_blank" rel="noopener noreferrer">
                   Ver documento actual
                 </Button>
               )}

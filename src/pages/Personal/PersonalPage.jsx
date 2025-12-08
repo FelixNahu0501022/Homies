@@ -28,6 +28,7 @@ import {
   useMediaQuery,
   ToggleButtonGroup,
   ToggleButton,
+  TableContainer,
 } from "@mui/material";
 import {
   Add,
@@ -50,29 +51,10 @@ import {
 } from "../../services/personal.service";
 import { PersonalCrearForm } from "./PersonalCrearPage";
 import { PersonalEditarForm } from "./PersonalEditarPage";
+import { resolveFileUrl } from "../../utils/files";
 
 /* 🔗 Genera URL absoluta de fotos o documentos */
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
 
-  // 🧹 Limpia rutas locales tipo "D:\Tareas U\..."
-  if (path.includes(":\\") || path.includes(":/")) {
-    // extrae solo el nombre del archivo (después del último slash o backslash)
-    path = path.split(/[/\\]/).pop();
-  }
-
-  // 🔧 limpia prefijos residuales
-  const clean = path.replace(/^\/?api\/?/, "").replace(/^\/?uploads\/?/, "");
-
-  // base del servidor
-  const base =
-    import.meta.env.VITE_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:3000";
-
-  // ✅ construye la URL final
-  return `${base}/uploads/${clean}`;
-};
 
 
 
@@ -175,8 +157,8 @@ export default function PersonalPage() {
     setSnack({ open: true, message: "Cambios guardados", severity: "success" });
   };
 
-  const fotoUrl = (p) => resolveUrl(p.foto);
-  const docUrl = (p) => resolveUrl(p.filedocumento || p.fileDocumento);
+  const fotoUrl = (p) => resolveFileUrl(p.foto);
+  const docUrl = (p) => resolveFileUrl(p.filedocumento || p.fileDocumento);
 
   /* UI principal */
   return (
@@ -224,69 +206,71 @@ export default function PersonalPage() {
           </Box>
         ) : view === "table" ? (
           <>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Foto</TableCell>
-                  <TableCell>Nombre</TableCell>
-                  <TableCell>CI</TableCell>
-                  <TableCell>Cohorte / Grado</TableCell>
-                  <TableCell>Teléfono</TableCell>
-                  <TableCell>Documento</TableCell>
-                  <TableCell>Estado</TableCell>
-                  <TableCell align="right">Acciones</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((p) => (
-                  <TableRow key={p.idpersonal} hover>
-                    <TableCell>
-                      <Avatar
-                        src={fotoUrl(p)}
-                        alt={`${p.nombre} ${p.apellido}`}
-                        sx={{ bgcolor: "primary.main", color: "#fff" }}
-                        imgProps={{
-                          onError: (e) => { e.currentTarget.src = ""; },
-                          crossOrigin: "anonymous",
-                        }}
-                      >
-                        {(p.nombre?.[0] || "?").toUpperCase()}
-                      </Avatar>
-                    </TableCell>
-                    <TableCell><strong>{p.nombre} {p.apellido}</strong></TableCell>
-                    <TableCell>{p.ci || "—"}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={`${p.clase_etiqueta || (p.clase_gestion ? `Clase ${p.clase_gestion}` : "-")}${p.grado_nombre ? ` / ${p.grado_nombre}` : ""}`}
-                      />
-                    </TableCell>
-                    <TableCell>{p.telefono || "—"}</TableCell>
-                    <TableCell>
-                      {docUrl(p) ? (
-                        <Button size="small" href={docUrl(p)} target="_blank" rel="noopener noreferrer">
-                          Ver documento
-                        </Button>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {p.activo !== false
-                        ? <Chip size="small" color="success" label="Activo" />
-                        : <Chip size="small" label="Inactivo" />}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Editar"><IconButton color="primary" onClick={() => { setEditId(p.idpersonal); setOpenEdit(true); }}><Edit /></IconButton></Tooltip>
-                      <Tooltip title={p.activo !== false ? "Inactivar" : "Activar"}>
-                        <IconButton color={p.activo !== false ? "warning" : "success"} onClick={() => onToggleActivo(p)}>
-                          {p.activo !== false ? <Block /> : <CheckCircleOutline />}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar"><IconButton color="error" onClick={() => onDelete(p)}><Delete /></IconButton></Tooltip>
-                    </TableCell>
+            <TableContainer sx={{ overflowX: "auto" }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Foto</TableCell>
+                    <TableCell>Nombre</TableCell>
+                    <TableCell>CI</TableCell>
+                    <TableCell>Cohorte / Grado</TableCell>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Documento</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {rows.map((p) => (
+                    <TableRow key={p.idpersonal} hover>
+                      <TableCell>
+                        <Avatar
+                          src={fotoUrl(p)}
+                          alt={`${p.nombre} ${p.apellido}`}
+                          sx={{ bgcolor: "primary.main", color: "#fff" }}
+                          imgProps={{
+                            onError: (e) => { e.currentTarget.src = ""; },
+                            crossOrigin: "anonymous",
+                          }}
+                        >
+                          {(p.nombre?.[0] || "?").toUpperCase()}
+                        </Avatar>
+                      </TableCell>
+                      <TableCell><strong>{p.nombre} {p.apellido}</strong></TableCell>
+                      <TableCell>{p.ci || "—"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={`${p.clase_etiqueta || (p.clase_gestion ? `Clase ${p.clase_gestion}` : "-")}${p.grado_nombre ? ` / ${p.grado_nombre}` : ""}`}
+                        />
+                      </TableCell>
+                      <TableCell>{p.telefono || "—"}</TableCell>
+                      <TableCell>
+                        {docUrl(p) ? (
+                          <Button size="small" href={docUrl(p)} target="_blank" rel="noopener noreferrer">
+                            Ver documento
+                          </Button>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {p.activo !== false
+                          ? <Chip size="small" color="success" label="Activo" />
+                          : <Chip size="small" label="Inactivo" />}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Editar"><IconButton color="primary" onClick={() => { setEditId(p.idpersonal); setOpenEdit(true); }}><Edit /></IconButton></Tooltip>
+                        <Tooltip title={p.activo !== false ? "Inactivar" : "Activar"}>
+                          <IconButton color={p.activo !== false ? "warning" : "success"} onClick={() => onToggleActivo(p)}>
+                            {p.activo !== false ? <Block /> : <CheckCircleOutline />}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Eliminar"><IconButton color="error" onClick={() => onDelete(p)}><Delete /></IconButton></Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
 
             <Box mt={2} display="flex" justifyContent="center" pb={2}>
               <Pagination count={totalPages} page={page} onChange={(_, v) => setPage(v)} />

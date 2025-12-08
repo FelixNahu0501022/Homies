@@ -69,7 +69,7 @@ export default function EmergenciaDetallePage() {
       try {
         const rs = await listarDescripciones({ typeId: data.idtipoemergencia ?? data.idTipoEmergencia });
         setDescsRaw(rs || []);
-      } catch {}
+      } catch { }
     })();
   }, [data]);
 
@@ -176,8 +176,7 @@ export default function EmergenciaDetallePage() {
             <MapPicker
               lat={data.lat}
               lng={data.lng}
-              readOnly
-              static
+              readOnly={true}
             />
           </Box>
 

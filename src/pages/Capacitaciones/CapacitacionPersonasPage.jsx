@@ -33,20 +33,10 @@ import {
   buscarPersonasCatalogo,
   crearPersonaCatalogo,
 } from "../../services/capacitaciones.service";
+import { resolveFileUrl } from "../../utils/files";
 
 /* 🔗 Reutilizamos resolveUrl del módulo Personal */
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
-  if (path.includes(":\\") || path.includes(":/")) path = path.split(/[/\\]/).pop();
-  const clean = path
-    .replace(/^\/?api\/?/, "")
-    .replace(/^\/?uploads\/?/, "")
-    .replace(/^\/?public\/?/, "")
-    .replace(/^\/?storage\/?/, "");
-  const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "http://localhost:3000";
-  return `${base}/uploads/${clean}`;
-};
+
 
 export default function CapacitacionPersonasPage() {
   const { id } = useParams();
@@ -274,7 +264,7 @@ export default function CapacitacionPersonasPage() {
                 >
                   <Box>
                     <Avatar
-                      src={resolveUrl(p.foto)}
+                      src={resolveFileUrl(p.foto)}
                       alt={p.nombre}
                       sx={{
                         width: 90,
@@ -368,7 +358,7 @@ export default function CapacitacionPersonasPage() {
                   <li {...props} key={option.idpersona}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Avatar
-                        src={resolveUrl(option.foto)}
+                        src={resolveFileUrl(option.foto)}
                         alt={option.nombre}
                         sx={{
                           width: 28,

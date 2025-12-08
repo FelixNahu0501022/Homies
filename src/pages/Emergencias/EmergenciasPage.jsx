@@ -6,7 +6,7 @@
 import {
   Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody,
   IconButton, Tooltip, Button, Box, TextField, Chip,
-  TablePagination, Stack, MenuItem
+  TablePagination, Stack, MenuItem, TableContainer
 } from "@mui/material";
 import {
   Add, Edit, Delete, Visibility,
@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import debounce from "lodash.debounce";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
-import { listarEmergencias, eliminarEmergencia } from "../../services/emergencias.service";
+import { listarEmergencias, eliminarEmergencia, listarTiposEmergencia } from "../../services/emergencias.service";
 
 // === Importamos los modales ===
 import EmergenciaVehiculosPage from "./EmergenciaVehiculosPage";
@@ -43,11 +43,26 @@ export default function EmergenciasPage() {
   const [estadoFilter, setEstadoFilter] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [tiposMap, setTiposMap] = useState({});
   const navigate = useNavigate();
 
   const cargar = async () => {
     try {
-      const data = await listarEmergencias();
+      const [data, tiposData] = await Promise.all([
+        listarEmergencias(),
+        listarTiposEmergencia()
+      ]);
+
+      // Crear mapa de tipos: id -> nombre
+      const tMap = {};
+      if (Array.isArray(tiposData)) {
+        tiposData.forEach(t => {
+          const id = t.idtipoemergencia ?? t.idTipoEmergencia ?? t.id;
+          if (id) tMap[id] = t.nombre ?? t.descripcion;
+        });
+      }
+      setTiposMap(tMap);
+
       setRows(data || []);
       setFiltered(data || []);
       setPage(0);
@@ -74,17 +89,17 @@ export default function EmergenciasPage() {
       const out = (source || []).filter((e) => {
         if (estado && normEstado(e.estado) !== estado) return false;
         if (!q) return true;
-        const tipo = `${e.tipos?.nombre ?? e.tipoNombre ?? ""}`.toLowerCase();
+        const tipo = `${e.tipos?.nombre ?? e.tipoNombre ?? tiposMap[e.idtipoemergencia ?? e.idTipoEmergencia] ?? ""}`.toLowerCase();
         const ubic = `${e.ubicacion ?? e.direccionTexto ?? ""}`.toLowerCase();
         const desc = `${e.descripcion ?? ""}`.toLowerCase();
-        const est  = `${e.estado ?? ""}`.toLowerCase();
-        const id   = `${getId(e) ?? ""}`;
+        const est = `${e.estado ?? ""}`.toLowerCase();
+        const id = `${getId(e) ?? ""}`;
         return tipo.includes(q) || ubic.includes(q) || desc.includes(q) || est.includes(q) || id.includes(q);
       });
       setFiltered(out);
       setPage(0);
     }, 250),
-    []
+    [tiposMap]
   );
   useEffect(() => { runFilter(search, estadoFilter, rows); }, [search, estadoFilter, rows, runFilter]);
 
@@ -118,8 +133,8 @@ export default function EmergenciasPage() {
   const [idModal, setIdModal] = useState(null);
 
   const openVehiculos = (id) => { setIdModal(id); setOpenVeh(true); };
-  const openPersonal  = (id) => { setIdModal(id); setOpenPer(true); };
-  const openInventario= (id) => { setIdModal(id); setOpenInv(true); };
+  const openPersonal = (id) => { setIdModal(id); setOpenPer(true); };
+  const openInventario = (id) => { setIdModal(id); setOpenInv(true); };
 
   return (
     <LayoutDashboard>
@@ -169,69 +184,71 @@ export default function EmergenciasPage() {
 
       {/* === Tabla === */}
       <Paper>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell><Emergency fontSize="small" sx={{ mr: .5 }} /> Tipo</TableCell>
-              <TableCell>Descripción</TableCell>
-              <TableCell>Fecha/Hora</TableCell>
-              <TableCell>Ubicación</TableCell>
-              <TableCell>Estado</TableCell>
-              <TableCell align="right">Acciones</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {pageItems.map((e) => {
-              const id = getId(e);
-              return (
-                <TableRow key={id} hover>
-                  <TableCell>{e.tipoNombre ?? e.tipos?.nombre ?? "—"}</TableCell>
-                  <TableCell>{e.descripcion || e.descripcionCatalogo || "—"}</TableCell>
-                  <TableCell>{fechaFmt(e.fechahora)}</TableCell>
-                  <TableCell>{e.ubicacion || e.direccionTexto || "—"}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={e.estado || "—"} color={estadoColor(e.estado)} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Tooltip title="Editar">
-                      <IconButton onClick={() => navigate(`/emergencias/editar/${id}`)}>
-                        <Edit />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Vehículos">
-                      <IconButton onClick={() => openVehiculos(id)}>
-                        <LocalShipping />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Personal">
-                      <IconButton onClick={() => openPersonal(id)}>
-                        <Person />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Inventario usado">
-                      <IconButton onClick={() => openInventario(id)}>
-                        <Inventory2 />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Detalle">
-                      <IconButton onClick={() => navigate(`/emergencias/detalle/${id}`)}>
-                        <Visibility />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Eliminar">
-                      <IconButton color="error" onClick={() => onDelete(e)}>
-                        <Delete />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={6}>Sin resultados</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+        <TableContainer sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell><Emergency fontSize="small" sx={{ mr: .5 }} /> Tipo</TableCell>
+                <TableCell>Descripción</TableCell>
+                <TableCell>Fecha/Hora</TableCell>
+                <TableCell>Ubicación</TableCell>
+                <TableCell>Estado</TableCell>
+                <TableCell align="right">Acciones</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pageItems.map((e) => {
+                const id = getId(e);
+                return (
+                  <TableRow key={id} hover>
+                    <TableCell>{e.tipoNombre ?? e.tipos?.nombre ?? tiposMap[e.idtipoemergencia ?? e.idTipoEmergencia] ?? "—"}</TableCell>
+                    <TableCell>{e.descripcion || e.descripcionCatalogo || "—"}</TableCell>
+                    <TableCell>{fechaFmt(e.fechahora)}</TableCell>
+                    <TableCell>{e.ubicacion || e.direccionTexto || "—"}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={e.estado || "—"} color={estadoColor(e.estado)} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Editar">
+                        <IconButton onClick={() => navigate(`/emergencias/editar/${id}`)}>
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Vehículos">
+                        <IconButton onClick={() => openVehiculos(id)}>
+                          <LocalShipping />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Personal">
+                        <IconButton onClick={() => openPersonal(id)}>
+                          <Person />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Inventario usado">
+                        <IconButton onClick={() => openInventario(id)}>
+                          <Inventory2 />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Detalle">
+                        <IconButton onClick={() => navigate(`/emergencias/detalle/${id}`)}>
+                          <Visibility />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton color="error" onClick={() => onDelete(e)}>
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filtered.length === 0 && (
+                <TableRow><TableCell colSpan={6}>Sin resultados</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
         <TablePagination
           component="div"

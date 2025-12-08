@@ -279,7 +279,7 @@ export default function CredencialesPage() {
       >
         {loading && <LinearProgress />}
 
-        <TableContainer sx={{ maxHeight: { xs: 420, sm: 520, md: 620 } }}>
+        <TableContainer sx={{ maxHeight: { xs: 420, sm: 520, md: 620 }, overflowX: "auto" }}>
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
@@ -297,73 +297,73 @@ export default function CredencialesPage() {
             <TableBody>
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={`sk-${i}`}>
-                      {Array.from({ length: 9 }).map((__, j) => (
-                        <TableCell key={j}>
-                          <Skeleton width={j === 1 ? 120 : 60} />
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
+                  <TableRow key={`sk-${i}`}>
+                    {Array.from({ length: 9 }).map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton width={j === 1 ? 120 : 60} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
                 : paginated.map((r) => (
-                    <TableRow key={r.idcredencial} hover>
-                      <TableCell>{r.idcredencial}</TableCell>
-                      <TableCell>
-                        {r.personal?.nombre} {r.personal?.apellido}
-                      </TableCell>
-                      <TableCell>{r.personal?.ci || "—"}</TableCell>
-                      <TableCell>
-                        {r.personal?.grado_nombre || "—"} / {r.personal?.clase_etiqueta || "—"}
-                      </TableCell>
-                      <TableCell>{r.numero || "—"}</TableCell>
-                      <TableCell>{formatISO(r.fechaemision)}</TableCell>
-                      <TableCell>
-                        {r.fecha_inicio_vigencia} → {r.fecha_fin_vigencia}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={r.estado_publico}
-                          color={estadoColor(r.estado_publico)}
-                          size="small"
-                          sx={{
-                            color: "#fff",
-                            fontWeight: 700,
-                            textTransform: "capitalize",
-                            "& .MuiChip-icon": { color: "inherit" },
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Ver PDF">
-                            <IconButton size="small" onClick={() => verPdf(r)}>
-                              <PictureAsPdf fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Marcar Vigente">
-                            <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "vigente")}>
-                              <CheckCircleOutline fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Suspender">
-                            <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "suspendida")}>
-                              <Block fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Revocar">
-                            <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "revocada")}>
-                              <GppBad fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Eliminar">
-                            <IconButton size="small" onClick={() => eliminar(r)}>
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  <TableRow key={r.idcredencial} hover>
+                    <TableCell>{r.idcredencial}</TableCell>
+                    <TableCell>
+                      {r.personal?.nombre} {r.personal?.apellido}
+                    </TableCell>
+                    <TableCell>{r.personal?.ci || "—"}</TableCell>
+                    <TableCell>
+                      {r.personal?.grado_nombre || "—"} / {r.personal?.clase_etiqueta || "—"}
+                    </TableCell>
+                    <TableCell>{r.numero || "—"}</TableCell>
+                    <TableCell>{formatISO(r.fechaemision)}</TableCell>
+                    <TableCell>
+                      {r.fecha_inicio_vigencia} → {r.fecha_fin_vigencia}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={r.estado_publico}
+                        color={estadoColor(r.estado_publico)}
+                        size="small"
+                        sx={{
+                          color: "#fff",
+                          fontWeight: 700,
+                          textTransform: "capitalize",
+                          "& .MuiChip-icon": { color: "inherit" },
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Tooltip title="Ver PDF">
+                          <IconButton size="small" onClick={() => verPdf(r)}>
+                            <PictureAsPdf fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Marcar Vigente">
+                          <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "vigente")}>
+                            <CheckCircleOutline fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Suspender">
+                          <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "suspendida")}>
+                            <Block fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Revocar">
+                          <IconButton size="small" onClick={() => cambiarEstado(r.idcredencial, "revocada")}>
+                            <GppBad fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Eliminar">
+                          <IconButton size="small" onClick={() => eliminar(r)}>
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
 
               {!loading && paginated.length === 0 && (
                 <TableRow>

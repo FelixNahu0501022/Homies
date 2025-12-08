@@ -29,29 +29,10 @@ import {
   asignarPersonal,
   quitarPersonal,
 } from "../../services/capacitaciones.service";
+import { resolveFileUrl } from "../../utils/files";
 
 /* 🔗 Igual que en PersonalPage */
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
 
-  // Limpia rutas tipo locales (D:\, etc.)
-  if (path.includes(":\\") || path.includes(":/")) {
-    path = path.split(/[/\\]/).pop();
-  }
-
-  const clean = path
-    .replace(/^\/?api\/?/, "")
-    .replace(/^\/?uploads\/?/, "")
-    .replace(/^\/?public\/?/, "")
-    .replace(/^\/?storage\/?/, "");
-
-  const base =
-    import.meta.env.VITE_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:3000";
-
-  return `${base}/uploads/${clean}`;
-};
 
 const toArr = (x) => (Array.isArray(x) ? x : []);
 const nombreCompleto = (p) => `${p?.nombre || ""} ${p?.apellido || ""}`.trim();
@@ -219,7 +200,7 @@ export default function CapacitacionPersonalPage() {
                 >
                   <Box>
                     <Avatar
-                      src={resolveUrl(p.foto)}
+                      src={resolveFileUrl(p.foto)}
                       alt={nombreCompleto(p)}
                       sx={{
                         width: 90,
@@ -298,7 +279,7 @@ export default function CapacitacionPersonalPage() {
               <li {...props} key={option.idpersonal}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Avatar
-                    src={resolveUrl(option.foto)}
+                    src={resolveFileUrl(option.foto)}
                     alt={nombreCompleto(option)}
                     sx={{
                       width: 28,

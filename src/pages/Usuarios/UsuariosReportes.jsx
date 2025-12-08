@@ -1,425 +1,778 @@
+// src/pages/Usuarios/UsuariosReportes.jsx
 import {
-  Typography,
-  Paper,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  Button,
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  CircularProgress,
-  Tabs,
-  Tab,
-  Chip,
-  TextField,
-  Pagination,
+  Typography, Paper, Box, Button, TextField, MenuItem, Grid, CircularProgress,
+  IconButton, Tooltip, Tabs, Tab, InputAdornment, Divider
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
-import debounce from "lodash.debounce";
-import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { useState, useEffect, useMemo } from "react";
 import {
-  repResumenUsuarios,
-  repUsuariosPorRol,
-  repUsuariosDeRol,
+  ArrowBack, PictureAsPdf, Refresh, TableView, Search, FileDownload
+} from "@mui/icons-material";
+import LayoutDashboard from "../../layouts/LayoutDashboard";
+import { useNavigate } from "react-router-dom";
+import Swal from "sweetalert2";
+import { exportTablePdf } from "../../utils/pdfExport";
+import { exportToExcel } from "../../utils/exportToExcel";
+import { TablaReporte } from "../../components/reportes";
+import ReporteUsuariosDashboard from "./ReporteUsuariosDashboard";
+import MatrizPermisos from "./MatrizPermisos";
+import {
+  listarUsuarios,
   repUsuariosSinRol,
   repUsuariosMultiRol,
+  repUsuariosDeRol,
+  repRolesConDetalle,
   repRolesSinUsuarios,
-  repPermisosSinRol,
-  repPermisosMatriz,
+  repPermisosDeRol,
+  repPermisosSinRol
 } from "../../services/usuarios.service";
-import { listarRoles } from "../../services/roles.service";
-import { exportKpiAndRankingPdf, exportTablePdf } from "../../utils/pdfExport";
+import api from "../../services/axios";
+
+// Definición de todos los reportes disponibles
+const REPORTES = {
+  // Panel de Control
+  dashboard: {
+    id: 'dashboard',
+    label: 'Panel de Control de Usuarios',
+    categoria: 'resumen',
+    descripcion: 'Dashboard ejecutivo con KPIs y gráficos estadísticos',
+    requiereFiltro: false
+  },
+
+  // Reportes de Usuarios
+  listado_completo: {
+    id: 'listado_completo',
+    label: 'Listado Completo de Usuarios del Sistema',
+    categoria: 'usuarios',
+    descripcion: 'Todos los usuarios registrados con sus roles y estado',
+    requiereFiltro: false
+  },
+  sin_rol: {
+    id: 'sin_rol',
+    label: 'Usuarios Sin Asignación de Rol',
+    categoria: 'usuarios',
+    descripcion: 'Usuarios que no tienen ningún rol asignado',
+    requiereFiltro: false
+  },
+  multiples_roles: {
+    id: 'multiples_roles',
+    label: 'Usuarios con Múltiples Responsabilidades',
+    categoria: 'usuarios',
+    descripcion: 'Usuarios con 2 o más roles asignados',
+    requiereFiltro: false
+  },
+  por_rol: {
+    id: 'por_rol',
+    label: 'Detalle de Usuarios por Rol Específico',
+    categoria: 'usuarios',
+    descripcion: 'Lista de usuarios asignados a un rol particular',
+    requiereFiltro: true,
+    filtroTipo: 'rol'
+  },
+
+  // Reportes de Roles
+  analisis_roles: {
+    id: 'analisis_roles',
+    label: 'Análisis de Roles del Sistema',
+    categoria: 'roles',
+    descripcion: 'Resumen de todos los roles con cantidad de usuarios',
+    requiereFiltro: false
+  },
+  roles_sin_usuarios: {
+    id: 'roles_sin_usuarios',
+    label: 'Roles Sin Usuarios Asignados',
+    categoria: 'roles',
+    descripcion: 'Roles que no tienen usuarios (huérfanos)',
+    requiereFiltro: false
+  },
+  matriz_permisos: {
+    id: 'matriz_permisos',
+    label: 'Matriz de Permisos por Rol',
+    categoria: 'roles',
+    descripcion: 'Tabla cruzada de roles y permisos asignados',
+    requiereFiltro: false,
+    componente: 'MatrizPermisos'
+  },
+  permisos_rol: {
+    id: 'permisos_rol',
+    label: 'Detalle de Permisos de un Rol',
+    categoria: 'roles',
+    descripcion: 'Lista completa de permisos de un rol específico',
+    requiereFiltro: true,
+    filtroTipo: 'rol'
+  },
+  permisos_huerfanos: {
+    id: 'permisos_huerfanos',
+    label: 'Permisos No Asignados a Ningún Rol',
+    categoria: 'roles',
+    descripcion: 'Permisos que no están asignados (huérfanos)',
+    requiereFiltro: false
+  }
+};
+
+function TabPanel({ children, value, index, ...other }) {
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
 
 export default function UsuariosReportes() {
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState(0);
+  const navigate = useNavigate();
+  const [tabActual, setTabActual] = useState(0);
+  const [reporteSeleccionado, setReporteSeleccionado] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [datos, setDatos] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
 
-  // datos generales
-  const [kpi, setKpi] = useState(null);
-  const [ranking, setRanking] = useState([]);
-  const [rolesLookup, setRolesLookup] = useState(new Map());
+  // Filtros
+  const [roles, setRoles] = useState([]);
+  const [rolFiltro, setRolFiltro] = useState('');
 
-  // datos por sección
-  const [rolesSinUsuarios, setRolesSinUsuarios] = useState([]);
-  const [permisosSinRol, setPermisosSinRol] = useState([]);
-  const [usuariosSinRol, setUsuariosSinRol] = useState([]);
-  const [usuariosMultiRol, setUsuariosMultiRol] = useState([]);
-  const [usuariosDeRol, setUsuariosDeRol] = useState([]);
-  const [permisosMatriz, setPermisosMatriz] = useState({
-    roles: [],
-    permisos: [],
-    asignaciones: [],
-  });
-
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const debouncedSearch = useMemo(
-    () => debounce((v) => setSearch(v), 500),
-    []
-  );
-
-  // 🔹 Carga inicial del resumen general y catálogos
   useEffect(() => {
-    (async () => {
-      try {
-        const [k, r, rsu, psr, roles] = await Promise.all([
-          repResumenUsuarios(),
-          repUsuariosPorRol(),
-          repRolesSinUsuarios(),
-          repPermisosSinRol(),
-          listarRoles(),
-        ]);
-        setKpi(k || {});
-        setRanking(r || []);
-        setRolesSinUsuarios(rsu || []);
-        setPermisosSinRol(psr || []);
-        const map = new Map();
-        (roles || []).forEach((rl) => map.set(rl.idrol, rl.nombre));
-        setRolesLookup(map);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    cargarRoles();
   }, []);
 
-  // 🔹 Funciones de carga de datos por reporte
-  const cargarUsuariosSinRol = async () => {
-    const res = await repUsuariosSinRol({ page, limit: 10, search });
-    setUsuariosSinRol(res?.data || []);
-  };
-
-  const cargarUsuariosMultiRol = async () => {
-    const res = await repUsuariosMultiRol({ page, limit: 10, search });
-    setUsuariosMultiRol(res?.data || []);
-  };
-
-  const cargarUsuariosDeRol = async (idRol) => {
-    const res = await repUsuariosDeRol(idRol, { page, limit: 10, search });
-    setUsuariosDeRol(res?.data || []);
-  };
-
-  const cargarMatriz = async () => {
-    const res = await repPermisosMatriz();
-    setPermisosMatriz(res);
-  };
-
-  const renderRoles = (u) => {
-    if (Array.isArray(u.roles_detalle) && u.roles_detalle.length > 0) {
-      return u.roles_detalle.map((r) => (
-        <Chip
-          key={`${u.idusuario}-${r.idrol}`}
-          label={r.nombre}
-          size="small"
-          sx={{ mr: 0.5 }}
-        />
-      ));
+  const cargarRoles = async () => {
+    try {
+      const { data } = await api.get("/roles");
+      setRoles(data || []);
+    } catch (e) {
+      console.error("Error cargar roles:", e);
     }
-    if (Array.isArray(u.roles) && u.roles.length > 0) {
-      return u.roles.map((rid) => (
-        <Chip
-          key={`${u.idusuario}-${rid}`}
-          label={rolesLookup.get(rid) || `Rol #${rid}`}
-          size="small"
-          sx={{ mr: 0.5 }}
-        />
-      ));
-    }
-    return <Chip label="Sin rol" size="small" />;
   };
 
-  // 🔹 Auto-carga de datos al cambiar de pestaña
-  useEffect(() => {
-    if (tab === 1 && usuariosSinRol.length === 0) cargarUsuariosSinRol();
-    if (tab === 2 && usuariosMultiRol.length === 0) cargarUsuariosMultiRol();
-    if (tab === 3 && usuariosDeRol.length === 0 && rolesLookup.size > 0) {
-      const primerRol = [...rolesLookup.keys()][0];
-      cargarUsuariosDeRol(primerRol);
-    }
-    if (tab === 4 && permisosMatriz.roles.length === 0) cargarMatriz();
-  }, [tab, rolesLookup]);
+  // Filtrar reportes por categoría
+  const reportesPorCategoria = useMemo(() => {
+    const categorias = {
+      resumen: [],
+      usuarios: [],
+      roles: []
+    };
 
-  if (loading) {
-    return (
-      <LayoutDashboard>
-        <Box sx={{ display: "grid", placeItems: "center", minHeight: 280 }}>
-          <CircularProgress />
-        </Box>
-      </LayoutDashboard>
+    Object.values(REPORTES).forEach(reporte => {
+      categorias[reporte.categoria]?.push(reporte);
+    });
+
+    return categorias;
+  }, []);
+
+  // Filtrar datos por búsqueda
+  const datosFiltrados = useMemo(() => {
+    if (!busqueda || !datos || datos.length === 0) return datos;
+
+    const termino = busqueda.toLowerCase();
+    return datos.filter(row =>
+      Object.values(row).some(value =>
+        String(value).toLowerCase().includes(termino)
+      )
     );
-  }
+  }, [datos, busqueda]);
+
+  const generarReporte = async () => {
+    if (!reporteSeleccionado) {
+      Swal.fire("Aviso", "Selecciona un tipo de reporte", "info");
+      return;
+    }
+
+    const reporte = REPORTES[reporteSeleccionado];
+
+    // Validar filtros requeridos
+    if (reporte.requiereFiltro && reporte.filtroTipo === 'rol' && !rolFiltro) {
+      Swal.fire("Aviso", "Selecciona un rol para este reporte", "info");
+      return;
+    }
+
+    setLoading(true);
+    setBusqueda(''); // Limpiar búsqueda
+
+    try {
+      let resultado = [];
+
+      switch (reporteSeleccionado) {
+        case 'listado_completo': {
+          const data = await listarUsuarios({ limit: 10000 });
+          const usuarios = data?.data || data || [];
+          resultado = usuarios.map(u => ({
+            Usuario: u.nombreusuario || u.nombreUsuario || "—",
+            'Nombre Personal': u.personal_nombre || u.nombre || "—",
+            Roles: Array.isArray(u.roles)
+              ? u.roles.map(r => r.nombre || r).join(", ")
+              : (u.roles || "Sin rol"),
+            Estado: u.estado || "Activo",
+          }));
+          break;
+        }
+
+        case 'sin_rol': {
+          const data = await repUsuariosSinRol({ limit: 10000 });
+          const usuarios = data?.data || data || [];
+          resultado = usuarios.map(u => ({
+            Usuario: u.nombreusuario || u.nombreUsuario || "—",
+            'Nombre Personal': u.personal_nombre || u.nombre || "—",
+            Estado: u.estado || "—"
+          }));
+          break;
+        }
+
+        case 'multiples_roles': {
+          const data = await repUsuariosMultiRol({ limit: 10000 });
+          const usuarios = data?.data || data || [];
+          resultado = usuarios.map(u => ({
+            Usuario: u.nombreusuario || u.nombreUsuario || "—",
+            'Nombre Personal': u.personal_nombre || u.nombre || "—",
+            Roles: Array.isArray(u.roles)
+              ? u.roles.map(r => r.nombre || r).join(", ")
+              : (u.roles || "—"),
+            'Cantidad de Roles': u.cantidad_roles || u.cantidadRoles || 0,
+          }));
+          break;
+        }
+
+        case 'por_rol': {
+          // En lugar de usar el endpoint específico, usar listado completo y filtrar
+          const todosUsuarios = await listarUsuarios({ limit: 10000 });
+          const usuariosData = todosUsuarios?.data || todosUsuarios || [];
+          const rolSeleccionado = roles.find(r => r.idrol === parseInt(rolFiltro));
+
+          console.log('DEBUG - Total usuarios:', usuariosData.length);
+          console.log('DEBUG - Rol filtro ID:', rolFiltro, 'Rol seleccionado:', rolSeleccionado);
+          console.log('DEBUG - Primer usuario ejemplo:', usuariosData[0]);
+
+          // Filtrar usuarios que tengan el rol seleccionado
+          const usuariosFiltrados = usuariosData.filter(u => {
+            if (!u.roles) {
+              console.log('DEBUG - Usuario sin roles:', u.nombreusuario);
+              return false;
+            }
+
+            // Si roles es array de números [1, 2, 3]
+            if (Array.isArray(u.roles)) {
+              const tieneRol = u.roles.includes(parseInt(rolFiltro));
+              if (tieneRol) console.log('DEBUG - Usuario con rol (ID array):', u.nombreusuario, u.roles);
+              return tieneRol;
+            }
+
+            // Si roles_detalle existe como array de objetos
+            if (u.roles_detalle && Array.isArray(u.roles_detalle)) {
+              const tieneRol = u.roles_detalle.some(rol =>
+                rol.idrol === parseInt(rolFiltro) ||
+                rol.idRol === parseInt(rolFiltro)
+              );
+              if (tieneRol) console.log('DEBUG - Usuario con rol (detalle):', u.nombreusuario);
+              return tieneRol;
+            }
+
+            return false;
+          });
+
+          console.log('DEBUG - Usuarios filtrados:', usuariosFiltrados.length);
+
+          // Obtener datos de personal completos (incluyendo CI)
+          const usuariosConCI = await Promise.all(
+            usuariosFiltrados.map(async (u) => {
+              if (!u.idpersonal) return u;
+              try {
+                const res = await api.get(`/personal/${u.idpersonal}`);
+                console.log('DEBUG - CI del personal:', res.data?.ci);
+                return { ...u, ci_personal: res.data?.ci || res.data?.cedula };
+              } catch (e) {
+                return u;
+              }
+            })
+          );
+
+          resultado = usuariosConCI.map(u => {
+            // Extraer CI - el backend devuelve campos planos como personal_ci
+            const ci = u.ci_personal || u.personal_ci ||       // Campo plano del backend
+              u.personal?.ci ||       // Por si viene como objeto
+              u.ci ||
+              u.CI ||
+              u.cedula ||
+              "Sin registro";
+
+            // Nombre completo del personal
+            const nombreCompleto = u.personal
+              ? `${u.personal.nombre || ''} ${u.personal.apellido || ''}`.trim()
+              : (u.personal_nombre || u.personalnombre || u.nombre || "Sin nombre");
+
+            // Estado - manejar booleano correctamente
+            let estado = "Desconocido";
+            if (typeof u.estado === 'boolean') {
+              // Si estado es booleano (true/false)
+              estado = u.estado ? 'Activo' : 'Inactivo';
+            } else if (u.estado) {
+              // Si estado es string ("Activo"/"Inactivo")
+              estado = String(u.estado).toLowerCase() === 'activo' ? 'Activo' : 'Inactivo';
+            } else if (u.Estado) {
+              estado = String(u.Estado).toLowerCase() === 'activo' ? 'Activo' : 'Inactivo';
+            } else if (u.activo !== undefined) {
+              estado = u.activo === true || u.activo === 'true' || u.activo === 1 ? 'Activo' : 'Inactivo';
+            }
+
+            return {
+              Usuario: u.nombreusuario || u.nombreUsuario || u.usuario || "—",
+              'Nombre Personal': nombreCompleto || "—",
+              CI: ci,
+              Estado: estado
+            };
+          });
+
+          // Agregar info del rol como encabezado
+          const totalUsuarios = resultado.length;
+          if (rolSeleccionado && totalUsuarios > 0) {
+            resultado.unshift({
+              Usuario: `━━━ ROL: ${rolSeleccionado.nombre} ━━━`,
+              'Nombre Personal': `Total: ${totalUsuarios} usuario(s)`,
+              CI: "━━━━━━━━━",
+              Estado: "━━━━━━━━━"
+            });
+          }
+          break;
+        }
+
+        case 'analisis_roles': {
+          const data = await repRolesConDetalle();
+          resultado = data.map(r => ({
+            Rol: r.rol_nombre || r.nombre || "—",
+            Descripción: r.descripcion || "—",
+            'Total Usuarios': r.total_usuarios || 0,
+            'Usuarios Muestra': r.usuarios_resumen
+              ? r.usuarios_resumen.slice(0, 3).map(u => u.nombreusuario).join(", ") + "..."
+              : "—"
+          }));
+          break;
+        }
+
+        case 'roles_sin_usuarios': {
+          const data = await repRolesSinUsuarios();
+          resultado = data.map(r => ({
+            Rol: r.nombre || "—",
+            Descripción: r.descripcion || "—",
+            'ID Rol': r.idrol || "—"
+          }));
+          break;
+        }
+
+        case 'permisos_rol': {
+          const data = await repPermisosDeRol(rolFiltro);
+          const rolSeleccionado = roles.find(r => r.idrol === parseInt(rolFiltro));
+          resultado = data.map(p => ({
+            Permiso: p.nombre || "—",
+            Descripción: p.descripcion || "—"
+          }));
+          if (rolSeleccionado) {
+            resultado.unshift({
+              Permiso: `ROL: ${rolSeleccionado.nombre}`,
+              Descripción: `Total: ${resultado.length} permisos`
+            });
+          }
+          break;
+        }
+
+        case 'permisos_huerfanos': {
+          const data = await repPermisosSinRol();
+          resultado = data.map(p => ({
+            Permiso: p.nombre || "—",
+            Descripción: p.descripcion || "—",
+            'ID Permiso': p.idpermiso || "—"
+          }));
+          break;
+        }
+
+        default:
+          Swal.fire("Aviso", "Tipo de reporte no implementado", "warning");
+          break;
+      }
+
+      setDatos(resultado);
+
+      if (resultado.length === 0) {
+        Swal.fire("Información", "No se encontraron registros para este reporte", "info");
+      }
+    } catch (e) {
+      Swal.fire("Error", e?.response?.data?.mensaje || e?.message || "Error al generar reporte", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportarPDF = () => {
+    // Validar que hay datos
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+
+    try {
+      const reporte = REPORTES[reporteSeleccionado];
+
+      // Validar estructura de datos
+      const primeraFila = datosFiltrados[0];
+      if (!primeraFila || typeof primeraFila !== 'object') {
+        Swal.fire("Error", "Formato de datos inválido para exportar", "error");
+        return;
+      }
+
+      const columns = Object.keys(primeraFila).map(k => ({
+        header: k,
+        dataKey: k
+      }));
+
+      if (columns.length === 0) {
+        Swal.fire("Error", "No se encontraron columnas para exportar", "error");
+        return;
+      }
+
+      exportTablePdf({
+        title: reporte?.label || "Reporte de Usuarios",
+        subtitle: reporte?.descripcion || "",
+        columns,
+        rows: datosFiltrados,
+        filename: `usuarios_${reporteSeleccionado}_${new Date().getTime()}.pdf`,
+        showStats: true
+      });
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      Swal.fire("Error", "Ocurrió un error al generar el PDF: " + error.message, "error");
+    }
+  };
+
+  const exportarExcel = () => {
+    // Validar que hay datos
+    if (!datosFiltrados || datosFiltrados.length === 0) {
+      Swal.fire("Aviso", "No hay datos para exportar", "info");
+      return;
+    }
+
+    try {
+      const reporte = REPORTES[reporteSeleccionado];
+
+      // Validar estructura de datos
+      if (!datosFiltrados[0] || typeof datosFiltrados[0] !== 'object') {
+        Swal.fire("Error", "Formato de datos inválido para exportar", "error");
+        return;
+      }
+
+      exportToExcel({
+        data: datosFiltrados,
+        filename: `usuarios_${reporteSeleccionado}_${new Date().getTime()}`,
+        sheetName: 'Reporte',
+        title: reporte?.label || "Reporte de Usuarios"
+      });
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Excel generado',
+        text: 'El archivo se descargó correctamente',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      Swal.fire("Error", "Ocurrió un error al generar el Excel: " + error.message, "error");
+    }
+  };
+
+  const reporteActual = REPORTES[reporteSeleccionado];
+  const mostrarFiltroRol = reporteActual?.requiereFiltro && reporteActual?.filtroTipo === 'rol';
 
   return (
     <LayoutDashboard>
-      <Typography variant="h5" gutterBottom>
-        Reportes del módulo Usuarios
-      </Typography>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Reportes de Usuarios
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Reportes profesionales con visualizaciones y exportación múltiple
+          </Typography>
+        </Box>
+        <Button variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate("/usuarios")}>
+          Volver
+        </Button>
+      </Box>
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Resumen general" />
-        <Tab label="Usuarios sin rol" />
-        <Tab label="Usuarios multi-rol" />
-        <Tab label="Usuarios de un rol" />
-        <Tab label="Matriz de permisos" />
-      </Tabs>
+      {/* Tabs de Categorías */}
+      <Paper sx={{ mb: 3 }}>
+        <Tabs
+          value={tabActual}
+          onChange={(e, newValue) => {
+            setTabActual(newValue);
+            setReporteSeleccionado('');
+            setDatos([]);
+          }}
+          indicatorColor="primary"
+          textColor="primary"
+        >
+          <Tab label="Resumen Ejecutivo" icon={<TableView />} iconPosition="start" />
+          <Tab label="Reportes de Usuarios" icon={<Search />} iconPosition="start" />
+          <Tab label="Roles y Permisos" icon={<TableView />} iconPosition="start" />
+        </Tabs>
+      </Paper>
 
-      {/* === TAB 0: Resumen general === */}
-      {tab === 0 && (
-        <>
-          <Box display="flex" justifyContent="space-between" mb={2}>
-            <Button
-              variant="outlined"
-              onClick={() => exportKpiAndRankingPdf({ kpi, ranking })}
-            >
-              Exportar PDF (Resumen)
-            </Button>
-            <Box display="flex" gap={1}>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() =>
-                  exportTablePdf({
-                    title: "Roles sin usuarios",
-                    columns: [
-                      { header: "ID", dataKey: "idrol" },
-                      { header: "Rol", dataKey: "nombre" },
-                      { header: "Descripción", dataKey: "descripcion" },
-                    ],
-                    rows: rolesSinUsuarios,
-                    filename: "roles_sin_usuarios.pdf",
-                  })
-                }
-              >
-                Exportar Roles sin usuarios
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() =>
-                  exportTablePdf({
-                    title: "Permisos sin rol",
-                    columns: [
-                      { header: "ID", dataKey: "idpermiso" },
-                      { header: "Permiso", dataKey: "nombre" },
-                      { header: "Descripción", dataKey: "descripcion" },
-                    ],
-                    rows: permisosSinRol,
-                    filename: "permisos_sin_rol.pdf",
-                  })
-                }
-              >
-                Exportar Permisos sin rol
-              </Button>
-            </Box>
-          </Box>
+      {/* Tab Panel: Resumen Ejecutivo */}
+      <TabPanel value={tabActual} index={0}>
+        <ReporteUsuariosDashboard />
+      </TabPanel>
 
+      {/* Tab Panel: Reportes de Usuarios */}
+      <TabPanel value={tabActual} index={1}>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Selecciona un Reporte
+          </Typography>
           <Grid container spacing={2}>
-            {[
-              { label: "Usuarios Totales", value: kpi?.total_usuarios ?? 0 },
-              { label: "Activos", value: kpi?.activos ?? 0 },
-              { label: "Inactivos", value: kpi?.inactivos ?? 0 },
-              { label: "Con Roles", value: kpi?.usuarios_con_roles ?? 0 },
-              { label: "Sin Roles", value: kpi?.usuarios_sin_roles ?? 0 },
-              { label: "Roles Distintos", value: kpi?.roles_distintos ?? 0 },
-            ].map((c, i) => (
-              <Grid key={i} item xs={12} sm={6} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="overline">{c.label}</Typography>
-                    <Typography variant="h4">{c.value}</Typography>
-                  </CardContent>
-                </Card>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                fullWidth
+                label="Tipo de Reporte"
+                value={reporteSeleccionado}
+                onChange={(e) => {
+                  setReporteSeleccionado(e.target.value);
+                  setDatos([]);
+                  setRolFiltro('');
+                }}
+                size="small"
+              >
+                <MenuItem value="">
+                  <em>(Selecciona un reporte)</em>
+                </MenuItem>
+                {reportesPorCategoria.usuarios.map(r => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {reporteActual && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {reporteActual.descripcion}
+                </Typography>
+              )}
+            </Grid>
+
+            {mostrarFiltroRol && (
+              <Grid item xs={12} md={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Selecciona un Rol"
+                  value={rolFiltro}
+                  onChange={(e) => setRolFiltro(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value="">
+                    <em>(Selecciona un rol)</em>
+                  </MenuItem>
+                  {roles.map(r => (
+                    <MenuItem key={r.idrol} value={r.idrol}>
+                      {r.nombre}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
-            ))}
+            )}
           </Grid>
 
-          <Box mt={3}>
-            <Typography variant="h6" gutterBottom>
-              Usuarios por rol (ranking)
-            </Typography>
-            <Paper>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Rol</TableCell>
-                    <TableCell align="right"># Usuarios</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(ranking || []).map((r) => (
-                    <TableRow key={r.idrol}>
-                      <TableCell>{r.rol_nombre}</TableCell>
-                      <TableCell align="right">{r.total_usuarios}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+          <Box mt={2} display="flex" gap={1}>
+            <Button
+              variant="contained"
+              onClick={generarReporte}
+              disabled={!reporteSeleccionado || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+            >
+              {loading ? "Generando..." : "Generar Reporte"}
+            </Button>
           </Box>
-        </>
-      )}
+        </Paper>
 
-      {/* === TAB 1: Usuarios sin rol === */}
-      {tab === 1 && (
-        <>
-          <TextField
-            label="Buscar"
-            onChange={(e) => debouncedSearch(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <Paper>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>Usuario</TableCell>
-                  <TableCell>Estado</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(usuariosSinRol || []).map((u) => (
-                  <TableRow key={u.idusuario}>
-                    <TableCell>{u.idusuario}</TableCell>
-                    <TableCell>{u.nombreusuario}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={u.estado ? "Activo" : "Inactivo"}
-                        color={u.estado ? "success" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        {/* Resultados */}
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={4}>
+            <CircularProgress />
+          </Box>
+        ) : datos.length > 0 ? (
+          <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+                <Box display="flex" gap={1}>
+                  <TextField
+                    size="small"
+                    placeholder="Buscar en resultados..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ width: 250 }}
+                  />
+                  <Tooltip title="Exportar a PDF">
+                    <IconButton onClick={exportarPDF} color="error">
+                      <PictureAsPdf />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Exportar a Excel">
+                    <IconButton onClick={exportarExcel} color="success">
+                      <FileDownload />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              <TablaReporte datos={datosFiltrados} />
+            </Paper>
+            <Typography variant="body2" color="text.secondary" align="center">
+              Mostrando {datosFiltrados.length} de {datos.length} registro(s)
+            </Typography>
+          </>
+        ) : reporteSeleccionado ? (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography variant="body1" color="text.secondary">
+              Haz clic en "Generar Reporte" para ver los resultados
+            </Typography>
           </Paper>
-        </>
-      )}
+        ) : null}
+      </TabPanel>
 
-      {/* === TAB 2: Usuarios multi-rol === */}
-      {tab === 2 && (
-        <>
-          <Paper>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>Usuario</TableCell>
-                  <TableCell>Roles</TableCell>
-                  <TableCell>Estado</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(usuariosMultiRol || []).map((u) => (
-                  <TableRow key={u.idusuario}>
-                    <TableCell>{u.idusuario}</TableCell>
-                    <TableCell>{u.nombreusuario}</TableCell>
-                    <TableCell>{renderRoles(u)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={u.estado ? "Activo" : "Inactivo"}
-                        color={u.estado ? "success" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                  </TableRow>
+      {/* Tab Panel: Roles y Permisos */}
+      <TabPanel value={tabActual} index={2}>
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Selecciona un Reporte
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                fullWidth
+                label="Tipo de Reporte"
+                value={reporteSeleccionado}
+                onChange={(e) => {
+                  setReporteSeleccionado(e.target.value);
+                  setDatos([]);
+                  setRolFiltro('');
+                }}
+                size="small"
+              >
+                <MenuItem value="">
+                  <em>(Selecciona un reporte)</em>
+                </MenuItem>
+                {reportesPorCategoria.roles.map(r => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.label}
+                  </MenuItem>
                 ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        </>
-      )}
+              </TextField>
+              {reporteActual && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {reporteActual.descripcion}
+                </Typography>
+              )}
+            </Grid>
 
-      {/* === TAB 3: Usuarios de un rol === */}
-      {tab === 3 && (
-        <>
-          <TextField
-            select
-            label="Rol"
-            SelectProps={{ native: true }}
-            onChange={(e) => {
-              const idRol = Number(e.target.value);
-              cargarUsuariosDeRol(idRol);
-            }}
-            sx={{ mb: 2 }}
-          >
-            <option value="">Seleccionar...</option>
-            {[...rolesLookup.entries()].map(([id, nombre]) => (
-              <option key={id} value={id}>
-                {nombre}
-              </option>
-            ))}
-          </TextField>
-
-          <Paper>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>Usuario</TableCell>
-                  <TableCell>Roles</TableCell>
-                  <TableCell>Estado</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(usuariosDeRol || []).map((u) => (
-                  <TableRow key={u.idusuario}>
-                    <TableCell>{u.idusuario}</TableCell>
-                    <TableCell>{u.nombreusuario}</TableCell>
-                    <TableCell>{renderRoles(u)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={u.estado ? "Activo" : "Inactivo"}
-                        color={u.estado ? "success" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        </>
-      )}
-
-      {/* === TAB 4: Matriz de permisos === */}
-      {tab === 4 && (
-        <>
-          <Paper sx={{ mt: 2, overflowX: "auto" }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Permiso \\ Rol</TableCell>
-                  {(permisosMatriz.roles || []).map((r) => (
-                    <TableCell key={r.idrol}>{r.nombre}</TableCell>
+            {mostrarFiltroRol && (
+              <Grid item xs={12} md={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Selecciona un Rol"
+                  value={rolFiltro}
+                  onChange={(e) => setRolFiltro(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value="">
+                    <em>(Selecciona un rol)</em>
+                  </MenuItem>
+                  {roles.map(r => (
+                    <MenuItem key={r.idrol} value={r.idrol}>
+                      {r.nombre}
+                    </MenuItem>
                   ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(permisosMatriz.permisos || []).map((p) => (
-                  <TableRow key={p.idpermiso}>
-                    <TableCell>{p.nombre}</TableCell>
-                    {(permisosMatriz.roles || []).map((r) => {
-                      const on = permisosMatriz.asignaciones?.some(
-                        (a) =>
-                          a.idrol === r.idrol && a.idpermiso === p.idpermiso
-                      );
-                      return (
-                        <TableCell key={`${r.idrol}-${p.idpermiso}`}>
-                          {on ? "✓" : "—"}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        </>
-      )}
+                </TextField>
+              </Grid>
+            )}
+          </Grid>
+
+          {reporteSeleccionado !== 'matriz_permisos' && (
+            <Box mt={2} display="flex" gap={1}>
+              <Button
+                variant="contained"
+                onClick={generarReporte}
+                disabled={!reporteSeleccionado || loading}
+                startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+              >
+                {loading ? "Generando..." : "Generar Reporte"}
+              </Button>
+            </Box>
+          )}
+        </Paper>
+
+        {/* Matriz de Permisos (componente especial) */}
+        {reporteSeleccionado === 'matriz_permisos' && <MatrizPermisos />}
+
+        {/* Otros reportes de roles */}
+        {reporteSeleccionado !== 'matriz_permisos' && (
+          <>
+            {loading ? (
+              <Box display="flex" justifyContent="center" p={4}>
+                <CircularProgress />
+              </Box>
+            ) : datos.length > 0 ? (
+              <>
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                    <Typography variant="h6">{reporteActual?.label || "Resultados"}</Typography>
+                    <Box display="flex" gap={1}>
+                      <TextField
+                        size="small"
+                        placeholder="Buscar en resultados..."
+                        value={busqueda}
+                        onChange={(e) => setBusqueda(e.target.value)}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <Search />
+                            </InputAdornment>
+                          ),
+                        }}
+                        sx={{ width: 250 }}
+                      />
+                      <Tooltip title="Exportar a PDF">
+                        <IconButton onClick={exportarPDF} color="error">
+                          <PictureAsPdf />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Exportar a Excel">
+                        <IconButton onClick={exportarExcel} color="success">
+                          <FileDownload />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                  <Divider sx={{ mb: 2 }} />
+                  <TablaReporte datos={datosFiltrados} />
+                </Paper>
+                <Typography variant="body2" color="text.secondary" align="center">
+                  Mostrando {datosFiltrados.length} de {datos.length} registro(s)
+                </Typography>
+              </>
+            ) : reporteSeleccionado ? (
+              <Paper sx={{ p: 4, textAlign: "center" }}>
+                <Typography variant="body1" color="text.secondary">
+                  Haz clic en "Generar Reporte" para ver los resultados
+                </Typography>
+              </Paper>
+            ) : null}
+          </>
+        )}
+      </TabPanel>
     </LayoutDashboard>
   );
 }

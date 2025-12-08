@@ -136,10 +136,10 @@ export default function DonativosPage() {
     e === "Pendiente"
       ? "warning"
       : e === "Aprobado"
-      ? "success"
-      : e === "Rechazado"
-      ? "error"
-      : "default";
+        ? "success"
+        : e === "Rechazado"
+          ? "error"
+          : "default";
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const pageItems = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -223,7 +223,7 @@ export default function DonativosPage() {
       <Paper sx={{ width: "100%", borderRadius: 3, overflow: "hidden" }}>
         {loading && <LinearProgress />}
 
-        <TableContainer>
+        <TableContainer sx={{ overflowX: "auto" }}>
           <Table
             stickyHeader
             size={isMobile ? "small" : "medium"}
@@ -242,76 +242,76 @@ export default function DonativosPage() {
             <TableBody>
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={6}>
-                        <Skeleton width="100%" height={28} />
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell colSpan={6}>
+                      <Skeleton width="100%" height={28} />
+                    </TableCell>
+                  </TableRow>
+                ))
                 : pageItems.map((d) => (
-                    <TableRow
-                      key={d.iddonativo}
-                      hover
-                      sx={
-                        d.estado === "Rechazado"
-                          ? {
-                              backgroundColor: (t) =>
-                                alpha(t.palette.error.main, 0.06),
-                            }
-                          : undefined
-                      }
-                    >
+                  <TableRow
+                    key={d.iddonativo}
+                    hover
+                    sx={
+                      d.estado === "Rechazado"
+                        ? {
+                          backgroundColor: (t) =>
+                            alpha(t.palette.error.main, 0.06),
+                        }
+                        : undefined
+                    }
+                  >
+                    <TableCell>
+                      <Chip
+                        icon={<VolunteerActivism fontSize="small" />}
+                        size="small"
+                        label={d.tipo || "—"}
+                        color="info"
+                      />
+                    </TableCell>
+                    <TableCell>{d.descripcion || "—"}</TableCell>
+                    {!isSmall && (
                       <TableCell>
-                        <Chip
-                          icon={<VolunteerActivism fontSize="small" />}
-                          size="small"
-                          label={d.tipo || "—"}
-                          color="info"
-                        />
+                        {d.cantidad != null ? Number(d.cantidad) : "—"}
                       </TableCell>
-                      <TableCell>{d.descripcion || "—"}</TableCell>
-                      {!isSmall && (
-                        <TableCell>
-                          {d.cantidad != null ? Number(d.cantidad) : "—"}
-                        </TableCell>
-                      )}
-                      <TableCell>{fechaFmt(d.fecha)}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={d.estado || "Pendiente"}
-                          color={estadoColor(d.estado)}
-                          sx={{
-                            color: "#fff",
-                            fontWeight: 700,
-                            "& .MuiChip-icon": { color: "inherit" },
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Tooltip title="Editar">
-                          <IconButton
-                            color="primary"
-                            size={isSmall ? "small" : "medium"}
-                            onClick={() =>
-                              navigate(`/donativos/editar/${d.iddonativo}`)
-                            }
-                          >
-                            <Edit />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Eliminar">
-                          <IconButton
-                            color="error"
-                            size={isSmall ? "small" : "medium"}
-                            onClick={() => onDelete(d)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                    )}
+                    <TableCell>{fechaFmt(d.fecha)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={d.estado || "Pendiente"}
+                        color={estadoColor(d.estado)}
+                        sx={{
+                          color: "#fff",
+                          fontWeight: 700,
+                          "& .MuiChip-icon": { color: "inherit" },
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Editar">
+                        <IconButton
+                          color="primary"
+                          size={isSmall ? "small" : "medium"}
+                          onClick={() =>
+                            navigate(`/donativos/editar/${d.iddonativo}`)
+                          }
+                        >
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          color="error"
+                          size={isSmall ? "small" : "medium"}
+                          onClick={() => onDelete(d)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} align="center">

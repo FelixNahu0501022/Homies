@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
+  Autocomplete,
 } from "@mui/material";
 import { useForm, Controller } from "react-hook-form";
 import { useEffect, useState } from "react";
@@ -59,7 +60,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
       try {
         const [resRoles, resPersonal] = await Promise.all([
           api.get("/roles"),
-          api.get("/personal"),
+          api.get("/personal", { params: { limit: 9999 } }),
         ]);
         setRoles(toArray(resRoles.data));
         setPersonales(toArray(resPersonal.data));
@@ -127,7 +128,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
       sx={{
         p: { xs: 1, sm: 2, md: 3 },
         width: "100%",
-        maxWidth: 700,
+        maxWidth: 900,
         mx: "auto",
       }}
     >
@@ -143,6 +144,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
         <Grid item xs={12}>
           <TextField
             fullWidth
+            size="medium"
             label="Nombre de Usuario"
             {...register("nombreUsuario", {
               required: "Este campo es obligatorio",
@@ -155,6 +157,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
         <Grid item xs={12}>
           <TextField
             fullWidth
+            size="medium"
             type="password"
             label="Contraseña"
             {...register("contraseña", {
@@ -170,7 +173,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
         </Grid>
 
         {/* Multi-select de roles */}
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12}>
           <Controller
             name="roles"
             control={control}
@@ -179,6 +182,7 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
               <TextField
                 select
                 fullWidth
+                size="medium"
                 label="Roles"
                 SelectProps={{ multiple: true }}
                 value={field.value || []}
@@ -199,27 +203,36 @@ export default function UsuarioCrearPage({ onClose, onSuccess }) {
         </Grid>
 
         {/* Personal */}
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12}>
           <Controller
             name="idPersonal"
             control={control}
             rules={{ required: "Seleccione un personal" }}
             render={({ field }) => (
-              <TextField
-                select
-                fullWidth
-                label="Personal Operativo"
-                error={!!errors.idPersonal}
-                helperText={errors.idPersonal?.message}
-                value={field.value || ""}
-                onChange={(e) => field.onChange(Number(e.target.value))}
-              >
-                {(personales ?? []).map((p) => (
-                  <MenuItem key={p.idpersonal} value={p.idpersonal}>
-                    {p.nombre} {p.apellido} {p.ci ? `- CI: ${p.ci}` : ""}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Autocomplete
+                options={personales ?? []}
+                size="medium"
+                getOptionLabel={(option) =>
+                  option
+                    ? `${option.nombre} ${option.apellido}${option.ci ? ' - CI: ' + option.ci : ''}`
+                    : ''
+                }
+                isOptionEqualToValue={(option, value) =>
+                  option.idpersonal === value.idpersonal
+                }
+                value={personales.find((p) => p.idpersonal === field.value) || null}
+                onChange={(_, newValue) => field.onChange(newValue?.idpersonal || '')}
+                noOptionsText="No se encontró personal"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="medium"
+                    label="Personal Operativo"
+                    error={!!errors.idPersonal}
+                    helperText={errors.idPersonal?.message}
+                  />
+                )}
+              />
             )}
           />
         </Grid>

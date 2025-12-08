@@ -133,6 +133,11 @@ export async function rptParticipacionEmergencias(params = {}) {
   const { data } = await api.get(`/vehiculos/reportes/emergencias/participacion${qs ? `?${qs}` : ""}`);
   return data;
 }
+export async function rptDisponiblesPorTipoEmergencia(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const { data } = await api.get(`/vehiculos/reportes/disponibles-por-tipo-emergencia${qs ? `?${qs}` : ""}`);
+  return data;
+}
 
 // --- Catálogos (Marcas / Tipos) ---
 export async function listarMarcas(search = "", limit = 50, offset = 0) {

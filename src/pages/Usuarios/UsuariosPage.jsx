@@ -397,7 +397,7 @@ export default function UsuariosPage() {
       <Paper sx={{ width: "100%", borderRadius: 3, overflow: "hidden" }}>
         {loading && <LinearProgress />}
 
-        <TableContainer sx={{ maxHeight: { xs: 420, sm: 520, md: 620 } }}>
+        <TableContainer sx={{ maxHeight: { xs: 420, sm: 520, md: 620 }, overflowX: "auto" }}>
           <Table stickyHeader size={isMobile ? "small" : "medium"}>
             <TableHead>
               <TableRow>
@@ -411,100 +411,100 @@ export default function UsuariosPage() {
             <TableBody>
               {loading
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={`sk-${i}`}>
-                      <TableCell>
-                        <Skeleton width={30} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={140} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={200} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={90} />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Skeleton width={120} />
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell>
+                      <Skeleton width={30} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={140} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={200} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={90} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Skeleton width={120} />
+                    </TableCell>
+                  </TableRow>
+                ))
                 : usuarios.map((u) => (
-                    <TableRow
-                      key={u.idusuario}
-                      hover
-                      sx={
-                        u.estado
-                          ? undefined
-                          : {
-                              backgroundColor: (theme) =>
-                                alpha(theme.palette.error.main, 0.06),
-                            }
-                      }
-                    >
-                      <TableCell>{u.idusuario}</TableCell>
-                      <TableCell>{u.nombreusuario}</TableCell>
-                      <TableCell>{renderRoles(u)}</TableCell>
-                      <TableCell>
-                        <Tooltip
-                          title={u.estado ? "Usuario activo" : "Usuario inactivo"}
-                        >
-                          <Chip
-                            icon={u.estado ? <CheckCircleOutline /> : <Block />}
-                            label={u.estado ? "Activo" : "Inactivo"}
-                            color={u.estado ? "success" : "error"}
-                            size="small"
-                            sx={{
-                              color: "#fff",
-                              fontWeight: 700,
-                              "& .MuiChip-icon": { color: "inherit" },
-                            }}
-                          />
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell align="right">
-                        {!isMobile ? (
-                          <>
-                            <Tooltip title="Editar">
+                  <TableRow
+                    key={u.idusuario}
+                    hover
+                    sx={
+                      u.estado
+                        ? undefined
+                        : {
+                          backgroundColor: (theme) =>
+                            alpha(theme.palette.error.main, 0.06),
+                        }
+                    }
+                  >
+                    <TableCell>{u.idusuario}</TableCell>
+                    <TableCell>{u.nombreusuario}</TableCell>
+                    <TableCell>{renderRoles(u)}</TableCell>
+                    <TableCell>
+                      <Tooltip
+                        title={u.estado ? "Usuario activo" : "Usuario inactivo"}
+                      >
+                        <Chip
+                          icon={u.estado ? <CheckCircleOutline /> : <Block />}
+                          label={u.estado ? "Activo" : "Inactivo"}
+                          color={u.estado ? "success" : "error"}
+                          size="small"
+                          sx={{
+                            color: "#fff",
+                            fontWeight: 700,
+                            "& .MuiChip-icon": { color: "inherit" },
+                          }}
+                        />
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell align="right">
+                      {!isMobile ? (
+                        <>
+                          <Tooltip title="Editar">
+                            <IconButton
+                              color="primary"
+                              onClick={() => handleOpenEdit(u.idusuario)}
+                            >
+                              <Edit />
+                            </IconButton>
+                          </Tooltip>
+                          {u.estado ? (
+                            <Tooltip title="Desactivar usuario">
                               <IconButton
-                                color="primary"
-                                onClick={() => handleOpenEdit(u.idusuario)}
+                                sx={{ color: "text.secondary" }}
+                                onClick={() =>
+                                  handleConfirmDialog(u.idusuario, false)
+                                }
                               >
-                                <Edit />
+                                <ToggleOff />
                               </IconButton>
                             </Tooltip>
-                            {u.estado ? (
-                              <Tooltip title="Desactivar usuario">
-                                <IconButton
-                                  sx={{ color: "text.secondary" }}
-                                  onClick={() =>
-                                    handleConfirmDialog(u.idusuario, false)
-                                  }
-                                >
-                                  <ToggleOff />
-                                </IconButton>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip title="Activar usuario">
-                                <IconButton
-                                  color="success"
-                                  onClick={() =>
-                                    handleConfirmDialog(u.idusuario, true)
-                                  }
-                                >
-                                  <ToggleOn />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                          </>
-                        ) : (
-                          <IconButton onClick={(e) => handleMenuOpen(e, u)}>
-                            <MoreVert />
-                          </IconButton>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          ) : (
+                            <Tooltip title="Activar usuario">
+                              <IconButton
+                                color="success"
+                                onClick={() =>
+                                  handleConfirmDialog(u.idusuario, true)
+                                }
+                              >
+                                <ToggleOn />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </>
+                      ) : (
+                        <IconButton onClick={(e) => handleMenuOpen(e, u)}>
+                          <MoreVert />
+                        </IconButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
 
               {!loading && usuarios.length === 0 && (
                 <TableRow>

@@ -12,6 +12,7 @@ import {
   Divider,
   InputAdornment,
   IconButton,
+  Autocomplete,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useForm, Controller } from "react-hook-form";
@@ -86,7 +87,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
         const [usuario, resRoles, resPersonal] = await Promise.all([
           obtenerUsuario(idNum),
           api.get("/roles"),
-          api.get("/personal"),
+          api.get("/personal", { params: { limit: 9999 } }),
         ]);
 
         if (!usuario) {
@@ -184,7 +185,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
       sx={{
         p: { xs: 1, sm: 2, md: 3 },
         width: "100%",
-        maxWidth: 800,
+        maxWidth: 900,
         mx: "auto",
       }}
     >
@@ -200,7 +201,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
 
       <Grid container spacing={2}>
         {/* Nombre de usuario */}
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12}>
           <Controller
             name="nombreUsuario"
             control={control}
@@ -209,6 +210,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
               <TextField
                 {...field}
                 fullWidth
+                size="medium"
                 label="Nombre de Usuario"
                 error={!!errors.nombreUsuario}
                 helperText={errors.nombreUsuario?.message}
@@ -218,7 +220,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
         </Grid>
 
         {/* Roles (multi-select) */}
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12}>
           <Controller
             name="roles"
             control={control}
@@ -231,6 +233,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
               <TextField
                 select
                 fullWidth
+                size="medium"
                 label="Roles"
                 SelectProps={{ multiple: true }}
                 value={field.value || []}
@@ -258,21 +261,30 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
               validate: (v) => (v === "" ? "Seleccione un personal" : true),
             }}
             render={({ field }) => (
-              <TextField
-                select
-                fullWidth
-                label="Personal Operativo"
-                value={field.value}
-                onChange={(e) => field.onChange(e.target.value)}
-                error={!!errors.idPersonal}
-                helperText={errors.idPersonal?.message}
-              >
-                {(Array.isArray(personales) ? personales : []).map((p) => (
-                  <MenuItem key={p.idpersonal} value={p.idpersonal}>
-                    {p.nombre} {p.apellido} {p.ci ? `- CI: ${p.ci}` : ""}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Autocomplete
+                options={Array.isArray(personales) ? personales : []}
+                size="medium"
+                getOptionLabel={(option) =>
+                  option
+                    ? `${option.nombre} ${option.apellido}${option.ci ? ' - CI: ' + option.ci : ''}`
+                    : ''
+                }
+                isOptionEqualToValue={(option, value) =>
+                  option.idpersonal === value.idpersonal
+                }
+                value={(Array.isArray(personales) ? personales : []).find((p) => p.idpersonal === field.value) || null}
+                onChange={(_, newValue) => field.onChange(newValue?.idpersonal || '')}
+                noOptionsText="No se encontró personal"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="medium"
+                    label="Personal Operativo"
+                    error={!!errors.idPersonal}
+                    helperText={errors.idPersonal?.message}
+                  />
+                )}
+              />
             )}
           />
         </Grid>
@@ -296,6 +308,7 @@ export default function UsuarioEditarPage({ idUsuario, onClose, onSuccess }) {
                 {...field}
                 type={showNewPassword ? "text" : "password"}
                 fullWidth
+                size="medium"
                 label="Nueva contraseña (dejar en blanco para no cambiar)"
                 error={!!errors.nuevaContrasena}
                 helperText={errors.nuevaContrasena?.message}

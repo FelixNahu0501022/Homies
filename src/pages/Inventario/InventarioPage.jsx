@@ -2,7 +2,7 @@
 import {
   Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody,
   IconButton, Tooltip, Button, Box, TextField, Chip, TablePagination,
-  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment
+  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment, TableContainer
 } from "@mui/material";
 import {
   Add, Edit, Delete, LocalShipping, ListAlt, Info, Assessment, PictureAsPdf,
@@ -245,48 +245,50 @@ export default function InventarioPage() {
       />
 
       <Paper sx={{ mt: 2 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Nombre</TableCell>
-              <TableCell>Descripción</TableCell>
-              <TableCell>Categoría</TableCell>
-              <TableCell>Unidad</TableCell>
-              <TableCell>Ubicación</TableCell>
-              <TableCell>Proveedor</TableCell>
-              <TableCell>Cantidad</TableCell>
-              <TableCell>Estado</TableCell>
-              <TableCell align="right">Acciones</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {pageItems.map((it) => (
-              <TableRow key={it.iditem || it.idItem} hover>
-                <TableCell><strong>{it.nombre}</strong></TableCell>
-                <TableCell>{it.descripcion || "—"}</TableCell>
-                <TableCell>{nombreCategoria(it) || "—"}</TableCell>
-                <TableCell>{nombreUnidad(it) || "—"}</TableCell>
-                <TableCell>{nombreUbicacion(it) || "—"}</TableCell>
-                <TableCell>{nombreProveedor(it) || "—"}</TableCell>
-                <TableCell>
-                  <Chip size="small" color={cantidadChipColor(it)} label={it.cantidad ?? 0} />
-                </TableCell>
-                <TableCell><Chip size="small" label={it.estado || "—"} /></TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Ver especificaciones"><IconButton onClick={() => abrirSpecs(it)}><Info /></IconButton></Tooltip>
-                  <Tooltip title="Asignar a vehículos">
-                    <IconButton onClick={() => navigate(`/inventario/${it.iditem || it.idItem}/asignaciones`)}><LocalShipping /></IconButton>
-                  </Tooltip>
-                  <Tooltip title="Consumo general"><IconButton onClick={() => abrirConsumo(it)}><ListAlt /></IconButton></Tooltip>
-                  <Tooltip title="Dar de baja (parcial)"><IconButton color="warning" onClick={() => abrirBaja(it)}><RemoveCircleOutline /></IconButton></Tooltip>
-                  <Tooltip title="Editar"><IconButton color="primary" onClick={() => navigate(`/inventario/editar/${it.iditem || it.idItem}`)}><Edit /></IconButton></Tooltip>
-                  <Tooltip title="Eliminar"><IconButton color="error" onClick={() => eliminarItem(it.iditem || it.idItem).then(cargar)}><Delete /></IconButton></Tooltip>
-                </TableCell>
+        <TableContainer sx={{ overflowX: "auto" }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Nombre</TableCell>
+                <TableCell>Descripción</TableCell>
+                <TableCell>Categoría</TableCell>
+                <TableCell>Unidad</TableCell>
+                <TableCell>Ubicación</TableCell>
+                <TableCell>Proveedor</TableCell>
+                <TableCell>Cantidad</TableCell>
+                <TableCell>Estado</TableCell>
+                <TableCell align="right">Acciones</TableCell>
               </TableRow>
-            ))}
-            {filtered.length === 0 && (<TableRow><TableCell colSpan={9}>Sin resultados</TableCell></TableRow>)}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {pageItems.map((it) => (
+                <TableRow key={it.iditem || it.idItem} hover>
+                  <TableCell><strong>{it.nombre}</strong></TableCell>
+                  <TableCell>{it.descripcion || "—"}</TableCell>
+                  <TableCell>{nombreCategoria(it) || "—"}</TableCell>
+                  <TableCell>{nombreUnidad(it) || "—"}</TableCell>
+                  <TableCell>{nombreUbicacion(it) || "—"}</TableCell>
+                  <TableCell>{nombreProveedor(it) || "—"}</TableCell>
+                  <TableCell>
+                    <Chip size="small" color={cantidadChipColor(it)} label={it.cantidad ?? 0} />
+                  </TableCell>
+                  <TableCell><Chip size="small" label={it.estado || "—"} /></TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Ver especificaciones"><IconButton onClick={() => abrirSpecs(it)}><Info /></IconButton></Tooltip>
+                    <Tooltip title="Asignar a vehículos">
+                      <IconButton onClick={() => navigate(`/inventario/${it.iditem || it.idItem}/asignaciones`)}><LocalShipping /></IconButton>
+                    </Tooltip>
+                    <Tooltip title="Consumo general"><IconButton onClick={() => abrirConsumo(it)}><ListAlt /></IconButton></Tooltip>
+                    <Tooltip title="Dar de baja (parcial)"><IconButton color="warning" onClick={() => abrirBaja(it)}><RemoveCircleOutline /></IconButton></Tooltip>
+                    <Tooltip title="Editar"><IconButton color="primary" onClick={() => navigate(`/inventario/editar/${it.iditem || it.idItem}`)}><Edit /></IconButton></Tooltip>
+                    <Tooltip title="Eliminar"><IconButton color="error" onClick={() => eliminarItem(it.iditem || it.idItem).then(cargar)}><Delete /></IconButton></Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filtered.length === 0 && (<TableRow><TableCell colSpan={9}>Sin resultados</TableCell></TableRow>)}
+            </TableBody>
+          </Table>
+        </TableContainer>
         <TablePagination
           component="div"
           count={filtered.length}
@@ -348,11 +350,11 @@ export default function InventarioPage() {
           {(!specsKV || specsKV.length === 0)
             ? <Typography variant="body2">Sin especificaciones</Typography>
             : specsKV.map(({ k, v }) => (
-                <Box key={k} sx={{ display: "flex", gap: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 180 }}>{k}:</Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{v}</Typography>
-                </Box>
-              ))
+              <Box key={k} sx={{ display: "flex", gap: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 180 }}>{k}:</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{v}</Typography>
+              </Box>
+            ))
           }
         </DialogContent>
         <DialogActions><Button onClick={cerrarSpecs}>Cerrar</Button></DialogActions>

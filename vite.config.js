@@ -7,5 +7,21 @@ export default defineConfig({
   server: {
     host: true,   // acepta conexiones externas
     port: 5173
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'react-router-dom'],
+          'mui': ['@mui/material', '@mui/icons-material'],
+          'charts': ['recharts'],
+          'pdf': ['jspdf', 'jspdf-autotable']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
   }
 });

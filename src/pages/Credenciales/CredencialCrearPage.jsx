@@ -67,7 +67,7 @@ export default function CredencialCrearPage({ open, onClose, onSuccess }) {
     (async () => {
       try {
         setCargando(true);
-        const resp = await listarPersonal();
+        const resp = await listarPersonal({ limit: 9999 });
         const arr = normalizePersonal(resp);
         setTodos(arr);
       } catch (err) {
@@ -140,6 +140,7 @@ export default function CredencialCrearPage({ open, onClose, onSuccess }) {
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <Autocomplete
+                size="medium"
                 options={opciones}
                 loading={cargando}
                 value={sel}
@@ -149,6 +150,7 @@ export default function CredencialCrearPage({ open, onClose, onSuccess }) {
                 renderInput={(params) => (
                   <TextField
                     {...params}
+                    size="medium"
                     label="Seleccionar personal"
                     placeholder="Nombre, apellido o CI..."
                     InputProps={{
@@ -171,6 +173,7 @@ export default function CredencialCrearPage({ open, onClose, onSuccess }) {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="medium"
                 label="Fecha inicio vigencia"
                 type="date"
                 value={fi}
@@ -181,6 +184,7 @@ export default function CredencialCrearPage({ open, onClose, onSuccess }) {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="medium"
                 label="Fecha fin vigencia"
                 type="date"
                 value={ff}

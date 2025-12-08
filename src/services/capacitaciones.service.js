@@ -55,9 +55,9 @@ function publicBase() {
 export async function listarCapacitaciones() {
   const { data } = await api.get("/capacitaciones");
   return Array.isArray(data) ? data
-       : Array.isArray(data?.data) ? data.data
-       : Array.isArray(data?.rows) ? data.rows
-       : [];
+    : Array.isArray(data?.data) ? data.data
+      : Array.isArray(data?.rows) ? data.rows
+        : [];
 }
 
 export async function obtenerCapacitacion(id) {
@@ -94,7 +94,7 @@ export async function listarContenidos(idCapacitacion) {
 export async function crearContenido(idCapacitacion, { descripcion, archivoPDF }) {
   const fd = new FormData();
   if (descripcion) fd.append("descripcion", descripcion);
-  if (archivoPDF)  fd.append("archivoPDF", archivoPDF);
+  if (archivoPDF) fd.append("archivoPDF", archivoPDF);
   const { data } = await api.post(`/capacitaciones/${idCapacitacion}/contenidos`, fd);
   return data;
 }
@@ -345,7 +345,7 @@ export async function crearPlantilla({ nombre, archivo, campos }) {
   const fd = new FormData();
   fd.append("nombre", nombre);
   if (archivo) fd.append("archivo", archivo);
-  if (campos)  fd.append("campos", JSON.stringify(campos));
+  if (campos) fd.append("campos", JSON.stringify(campos));
   const { data } = await api.post(`/capacitaciones/plantillas`, fd);
   return data;
 }
@@ -451,6 +451,10 @@ export async function repHistorialInstitucion(idInstitucion, { inicio, fin } = {
 // Certificados
 export async function repCertificadosEmitidos({ inicio, fin } = {}) {
   const { data } = await api.get(`/capacitaciones/reportes/certificados/emitidos?${qs({ inicio, fin })}`);
+  return data;
+}
+export async function listadoCertificados({ inicio, fin } = {}) {
+  const { data } = await api.get(`/capacitaciones/certificados/listado?${qs({ inicio, fin })}`);
   return data;
 }
 export async function repCertificadosPorTipo({ inicio, fin } = {}) {

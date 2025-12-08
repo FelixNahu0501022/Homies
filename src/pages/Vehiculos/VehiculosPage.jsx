@@ -43,6 +43,7 @@ import {
 } from "../../services/vehiculos.service";
 import VehiculoCrearPage from "./VehiculoCrearPage";
 import VehiculoEditarPage from "./VehiculoEditarPage";
+import { resolveFileUrl } from "../../utils/files";
 
 const ESTADOS = ["Operativo", "Fuera de servicio", "En emergencia"];
 
@@ -51,17 +52,6 @@ const estadoColor = (estado) => {
   if (estado === "Fuera de servicio") return "warning";
   if (estado === "En emergencia") return "error";
   return "default";
-};
-
-const resolveUrl = (path) => {
-  if (!path) return "";
-  if (path.startsWith("http") || path.startsWith("blob:")) return path;
-  if (path.includes(":\\") || path.includes(":/")) {
-    path = path.split(/[/\\]/).pop();
-  }
-  const clean = path.replace(/^\/?api\/?/, "").replace(/^\/?uploads\/?/, "");
-  const base = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "http://localhost:3000";
-  return `${base}/uploads/${clean}`;
 };
 
 export default function VehiculosPage() {
@@ -113,7 +103,7 @@ export default function VehiculosPage() {
     setPage(1);
   }, 300), []);
 
-  useEffect(() => { debouncedFilter(search, estado, rows); }, [search, estado, rows]);
+  useEffect(() => { debouncedFilter(search, estado, rows); }, [search, estado, rows, debouncedFilter]);
 
   const openEstadoMenu = (event, v) => { setAnchorEl(event.currentTarget); setVehiculoMenu(v); };
   const closeEstadoMenu = () => { setAnchorEl(null); setVehiculoMenu(null); };
@@ -155,7 +145,7 @@ export default function VehiculosPage() {
     }
   };
 
-  const fotoUrl = (v) => resolveUrl(v.foto);
+  const fotoUrl = (v) => resolveFileUrl(v.foto);
   const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
   const pageItems = filtered.slice((page - 1) * limit, page * limit);
 
