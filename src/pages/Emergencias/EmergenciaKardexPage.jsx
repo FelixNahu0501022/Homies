@@ -81,6 +81,27 @@ export default function EmergenciaKardexPage() {
         // eslint-disable-next-line
     }, [idEmergencia]);
 
+    // Auto-actualizar horas cada minuto si la emergencia no está finalizada
+    useEffect(() => {
+        if (!emerg) return;
+
+        const esActiva = emerg.estado?.toLowerCase() !== 'finalizada' &&
+            emerg.estado?.toLowerCase() !== 'completa';
+
+        if (!esActiva) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const h = await obtenerHorasPersonal(idEmergencia);
+                setHorasData(h || null);
+            } catch {
+                // Silencioso - no interrumpe la UI
+            }
+        }, 60000); // Cada 60 segundos
+
+        return () => clearInterval(interval);
+    }, [emerg, idEmergencia]);
+
     const kardexFiltrado = kardex.filter((k) => filtros[k.tiporecurso]);
 
     const formatFecha = (fecha) => {

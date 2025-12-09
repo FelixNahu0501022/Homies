@@ -117,6 +117,21 @@ export default function EmergenciaInventarioPage(props) {
     // eslint-disable-next-line
   }, [idEmergencia]);
 
+  // Recargar vehículos cuando la ventana recupera el focus (usuario vuelve de otra pestaña)
+  useEffect(() => {
+    const handleFocus = async () => {
+      try {
+        const vs = await listarVehiculosDeEmergencia(idEmergencia);
+        setVehiculos(vs || []);
+      } catch {
+        // Silencioso
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [idEmergencia]);
+
   // Cuando el usuario elige un vehículo, cargamos SOLO su inventario asignado
   useEffect(() => {
     let cancel = false;
