@@ -192,3 +192,143 @@ export async function opcionesPersonal() {
   const { data } = await api.get(`/emergencias/opciones/personal`);
   return data; // [{ id, label }]
 }
+
+/** =============== CHOFERES =============== **/
+/**
+ * Obtiene todos los choferes asignados a una emergencia
+ * @param {number} idEmergencia - ID de la emergencia
+ * @returns {Promise<Array>} Lista de choferes con datos de personal y vehículo
+ */
+export async function listarChoferesDeEmergencia(idEmergencia) {
+  const { data } = await api.get(`/emergencias/${idEmergencia}/choferes`);
+  return data;
+}
+
+/**
+ * Asigna un chofer a un vehículo en una emergencia
+ * @param {number} idEmergencia - ID de la emergencia
+ * @param {Object} payload - Datos del chofer
+ * @param {number} payload.idPersonal - ID del personal
+ * @param {number} payload.idVehiculo - ID del vehículo
+ * @param {string} [payload.observaciones] - Observaciones opcionales
+ * @returns {Promise<Object>} Resultado de la asignación
+ */
+export async function asignarChofer(idEmergencia, { idPersonal, idVehiculo, observaciones }) {
+  const { data } = await api.post(`/emergencias/${idEmergencia}/choferes`, {
+    idPersonal,
+    idVehiculo,
+    observaciones,
+  });
+  return data;
+}
+
+/**
+ * Desasigna un chofer (marca fechaDesasignacion)
+ * @param {number} idEmergencia - ID de la emergencia
+ * @param {number} idPersonal - ID del personal chofer
+ * @param {number} idVehiculo - ID del vehículo
+ * @param {Object} [payload] - Datos opcionales
+ * @param {string} [payload.observaciones] - Observaciones
+ * @returns {Promise<Object>} Resultado de la desasignación
+ */
+export async function desasignarChofer(idEmergencia, idPersonal, idVehiculo, { observaciones } = {}) {
+  const { data } = await api.delete(`/emergencias/${idEmergencia}/choferes/${idPersonal}/${idVehiculo}`, {
+    data: { observaciones },
+  });
+  return data;
+}
+
+/** =============== KARDEX Y RECURSOS =============== **/
+/**
+ * Obtiene el kardex completo (timeline) de todos los recursos de una emergencia
+ * @param {number} idEmergencia - ID de la emergencia
+ * @returns {Promise<Array>} Lista cronológica de acciones sobre recursos
+ */
+export async function obtenerKardexEmergencia(idEmergencia) {
+  const { data } = await api.get(`/emergencias/${idEmergencia}/kardex`);
+  return data;
+}
+
+/**
+ * Obtiene resumen estadístico de recursos utilizados
+ * @param {number} idEmergencia - ID de la emergencia
+ * @returns {Promise<Object>} Estadísticas de recursos
+ */
+export async function obtenerResumenRecursos(idEmergencia) {
+  const { data } = await api.get(`/emergencias/${idEmergencia}/resumen-recursos`);
+  return data;
+}
+
+/** =============== FECHAS INICIO/FIN =============== **/
+/**
+ * Marca la fecha de inicio de una emergencia
+ * @param {number} idEmergencia - ID de la emergencia
+ * @param {Object} [payload] - Datos opcionales
+ * @param {string} [payload.fechaInicio] - Fecha en formato ISO 8601 (usa NOW() si no se envía)
+ * @returns {Promise<Object>} Emergencia actualizada
+ */
+export async function marcarFechaInicio(idEmergencia, { fechaInicio } = {}) {
+  const { data } = await api.patch(`/emergencias/${idEmergencia}/inicio`, {
+    fechaInicio,
+  });
+  return data;
+}
+
+/**
+ * Marca la fecha de fin de una emergencia
+ * @param {number} idEmergencia - ID de la emergencia
+ * @param {Object} [payload] - Datos opcionales
+ * @param {string} [payload.fechaFin] - Fecha en formato ISO 8601 (usa NOW() si no se envía)
+ * @returns {Promise<Object>} Emergencia actualizada
+ */
+export async function marcarFechaFin(idEmergencia, { fechaFin } = {}) {
+  const { data } = await api.patch(`/emergencias/${idEmergencia}/fin`, {
+    fechaFin,
+  });
+  return data;
+}
+
+/** =============== REPORTES DE HORAS =============== **/
+/**
+ * Obtiene horas trabajadas como chofer
+ * @param {number} idPersonal - ID del personal
+ * @param {Object} [params] - Parámetros de filtro
+ * @param {string} [params.fechaInicio] - Fecha inicio en ISO 8601
+ * @param {string} [params.fechaFin] - Fecha fin en ISO 8601
+ * @returns {Promise<Array>} Lista de emergencias con horas como chofer
+ */
+export async function obtenerHorasChofer(idPersonal, { fechaInicio, fechaFin } = {}) {
+  const { data } = await api.get(`/personal/${idPersonal}/horas-chofer`, {
+    params: { fechaInicio, fechaFin },
+  });
+  return data;
+}
+
+/**
+ * Obtiene horas trabajadas en emergencias
+ * @param {number} idPersonal - ID del personal
+ * @param {Object} [params] - Parámetros de filtro
+ * @param {string} [params.fechaInicio] - Fecha inicio en ISO 8601
+ * @param {string} [params.fechaFin] - Fecha fin en ISO 8601
+ * @returns {Promise<Array>} Lista de emergencias con horas trabajadas
+ */
+export async function obtenerHorasEmergencias(idPersonal, { fechaInicio, fechaFin } = {}) {
+  const { data } = await api.get(`/personal/${idPersonal}/horas-emergencias`, {
+    params: { fechaInicio, fechaFin },
+  });
+  return data;
+}
+
+/**
+ * Resumen consolidado de horas de todo el personal
+ * @param {Object} [params] - Parámetros de filtro
+ * @param {string} [params.fechaInicio] - Fecha inicio en ISO 8601
+ * @param {string} [params.fechaFin] - Fecha fin en ISO 8601
+ * @returns {Promise<Array>} Lista de personal con horas consolidadas
+ */
+export async function obtenerResumenHorasTodos({ fechaInicio, fechaFin } = {}) {
+  const { data } = await api.get(`/personal/reportes/horas/resumen`, {
+    params: { fechaInicio, fechaFin },
+  });
+  return data;
+}
