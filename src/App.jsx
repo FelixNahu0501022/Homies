@@ -76,6 +76,9 @@ const EmergenciaPersonalPage = lazy(() => import("./pages/Emergencias/Emergencia
 const EmergenciaInventarioPage = lazy(() => import("./pages/Emergencias/EmergenciaInventarioPage"));
 const EmergenciasReportesPage = lazy(() => import("./pages/Emergencias/EmergenciasReportesPage"));
 const EmergenciaDetallePage = lazy(() => import("./pages/Emergencias/EmergenciaDetallePage"));
+const EmergenciaChoferesPage = lazy(() => import("./pages/Emergencias/EmergenciaChoferesPage"));
+const EmergenciaKardexPage = lazy(() => import("./pages/Emergencias/EmergenciaKardexPage"));
+const EmergenciasHorasPage = lazy(() => import("./pages/Emergencias/EmergenciasHorasPage"));
 
 // Credenciales
 const CredencialesPage = lazy(() => import("./pages/Credenciales/CredencialesPage"));
@@ -149,7 +152,10 @@ function App() {
           <Route path="/emergencias/:id/vehiculos" element={<PrivateRoute><EmergenciaVehiculosPage /></PrivateRoute>} />
           <Route path="/emergencias/:id/personal" element={<PrivateRoute><EmergenciaPersonalPage /></PrivateRoute>} />
           <Route path="/emergencias/:id/inventario" element={<PrivateRoute><EmergenciaInventarioPage /></PrivateRoute>} />
+          <Route path="/emergencias/:id/choferes" element={<PrivateRoute><EmergenciaChoferesPage /></PrivateRoute>} />
+          <Route path="/emergencias/:id/kardex" element={<PrivateRoute><EmergenciaKardexPage /></PrivateRoute>} />
           <Route path="/emergencias/reportes" element={<PrivateRoute><EmergenciasReportesPage /></PrivateRoute>} />
+          <Route path="/emergencias/reportes/horas" element={<PrivateRoute><EmergenciasHorasPage /></PrivateRoute>} />
           <Route path="/emergencias/detalle/:id" element={<PrivateRoute><EmergenciaDetallePage /></PrivateRoute>} />
 
           {/* Credenciales */}
