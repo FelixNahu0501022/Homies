@@ -63,7 +63,12 @@ export default function EmergenciaCrearPage() {
       direccionTexto: "",
       lat: null,
       lng: null,
-      fechahora: new Date().toISOString().slice(0, 16),
+      fechahora: (() => {
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        const localTime = new Date(now.getTime() - offset);
+        return localTime.toISOString().slice(0, 16);
+      })(),
       estado: "Pendiente",
       documentoSolvencia: null,
     },

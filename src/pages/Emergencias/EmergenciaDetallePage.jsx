@@ -185,7 +185,9 @@ export default function EmergenciaDetallePage() {
           <TextField
             label="Fecha y hora"
             type="datetime-local"
-            value={data.fechahora ? new Date(data.fechahora).toISOString().slice(0, 16) : ""}
+            value={data.fechahora && !isNaN(new Date(data.fechahora).getTime())
+              ? new Date(data.fechahora).toISOString().slice(0, 16)
+              : ""}
             fullWidth
             InputProps={{ readOnly: true }}
           />
