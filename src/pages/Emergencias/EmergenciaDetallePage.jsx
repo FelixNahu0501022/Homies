@@ -13,7 +13,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
 import {
-  obtenerEmergencia, listarTiposEmergencia, listarDescripciones
+  obtenerEmergencia, listarTiposEmergencia, listarDescripciones,
+  marcarFechaInicio, marcarFechaFin
 } from "../../services/emergencias.service";
 import MapPicker from "../../components/MapPicker";
 
@@ -189,95 +190,7 @@ export default function EmergenciaDetallePage() {
             InputProps={{ readOnly: true }}
           />
 
-          {/* Control de Tiempos - Fechas Inicio/Fin */}
-          <Box sx={{ gridColumn: "1 / -1", mt: 3, p: 2, bgcolor: "#f5f5f5", borderRadius: 2 }}>
-            <Typography variant="h6" fontWeight={600} mb={2}>
-              ⏱️ Control de Tiempos
-            </Typography>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2 }}>
-              {/* Fecha Inicio */}
-              <Box>
-                <TextField
-                  label="Fecha Inicio"
-                  type="datetime-local"
-                  fullWidth
-                  value={data.fechainicio ? new Date(data.fechainicio).toISOString().slice(0, 16) : ""}
-                  InputProps={{ readOnly: true }}
-                  InputLabelProps={{ shrink: true }}
-                />
-                {!data.fechainicio && (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    sx={{ mt: 1 }}
-                    onClick={async () => {
-                      const ok = await Swal.fire({
-                        title: "¿Marcar fecha de inicio?",
-                        text: "Se registrará la fecha y hora actual",
-                        icon: "question",
-                        showCancelButton: true,
-                      });
-                      if (!ok.isConfirmed) return;
-                      try {
-                        const res = await marcarFechaInicio(idNum);
-                        setData({ ...data, fechainicio: res.emergencia.fechainicio });
-                        Swal.fire("Listo", "Fecha marcada", "success");
-                      } catch (err) {
-                        Swal.fire("Error", err?.response?.data?.mensaje || "Error", "error");
-                      }
-                    }}
-                  >
-                    Marcar Ahora
-                  </Button>
-                )}
-                {data.fechainicio && <Chip label="Marcada" size="small" color="success" sx={{ mt: 1 }} />}
-              </Box>
 
-              {/* Fecha Fin */}
-              <Box>
-                <TextField
-                  label="Fecha Fin"
-                  type="datetime-local"
-                  fullWidth
-                  value={data.fechafin ? new Date(data.fechafin).toISOString().slice(0, 16) : ""}
-                  InputProps={{ readOnly: true }}
-                  InputLabelProps={{ shrink: true }}
-                  disabled={!data.fechainicio}
-                />
-                {!data.fechafin && data.fechainicio && (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    sx={{ mt: 1 }}
-                    onClick={async () => {
-                      const ok = await Swal.fire({
-                        title: "¿Marcar fecha de fin?",
-                        text: "Se registrará la fecha y hora actual",
-                        icon: "question",
-                        showCancelButton: true,
-                      });
-                      if (!ok.isConfirmed) return;
-                      try {
-                        const res = await marcarFechaFin(idNum);
-                        setData({ ...data, fechafin: res.emergencia.fechafin });
-                        Swal.fire("Listo", "Fecha marcada", "success");
-                      } catch (err) {
-                        Swal.fire("Error", err?.response?.data?.mensaje || "Error", "error");
-                      }
-                    }}
-                  >
-                    Marcar Ahora
-                  </Button>
-                )}
-                {data.fechafin && <Chip label="Finalizada" size="small" color="success" sx={{ mt: 1 }} />}
-                {!data.fechainicio && (
-                  <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-                    Marca fecha de inicio primero
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          </Box>
 
           {/* Documento */}
           <Box sx={{ gridColumn: "1 / -1", mt: 1 }}>
