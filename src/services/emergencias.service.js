@@ -334,17 +334,17 @@ export async function obtenerResumenHorasTodos({ fechaInicio, fechaFin } = {}) {
 }
 // Nuevas funciones
 export async function finalizarEmergencia(idEmergencia) {
-  const { data } = await api.patch(/emergencias//finalizar);
+  const { data } = await api.patch(`/emergencias/${idEmergencia}/finalizar`);
   return data;
 }
 
 export async function obtenerHorasPersonal(idEmergencia) {
-  const { data } = await api.get(/emergencias//horas-personal);
+  const { data } = await api.get(`/emergencias/${idEmergencia}/horas-personal`);
   return data;
 }
 
 export async function desasignarPersonal(idEmergencia, idPersonal, { observaciones } = {}) {
-  const { data } = await api.delete(/emergencias//personal/, {
+  const { data } = await api.delete(`/emergencias/${idEmergencia}/personal/${idPersonal}`, {
     data: { observaciones },
   });
   return data;
