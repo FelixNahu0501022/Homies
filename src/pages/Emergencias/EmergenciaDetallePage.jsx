@@ -13,8 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
 import {
-  obtenerEmergencia, listarTiposEmergencia, listarDescripciones,
-  marcarFechaInicio, marcarFechaFin
+  obtenerEmergencia, listarTiposEmergencia, listarDescripciones
 } from "../../services/emergencias.service";
 import MapPicker from "../../components/MapPicker";
 

@@ -130,6 +130,19 @@ export default function EmergenciaChoferesPage() {
             );
         }
 
+        // Validación: evitar asignar múltiples choferes al mismo vehículo
+        const vehiculoOcupado = choferes.find(
+            (c) => c.idvehiculo === vehiculoSel.idvehiculo && c.estado_turno === "ACTIVO"
+        );
+
+        if (vehiculoOcupado) {
+            return Swal.fire(
+                "No permitido",
+                `El vehículo ${vehiculoSel.placa} ya tiene un chofer activo: ${vehiculoOcupado.personal_nombre} ${vehiculoOcupado.personal_apellido}. Debe finalizar ese turno primero.`,
+                "warning"
+            );
+        }
+
         try {
             await asignarChofer(idEmergencia, {
                 idPersonal: personalSel.idpersonal,
