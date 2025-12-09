@@ -35,7 +35,7 @@ import api from "../../services/axios";
 import {
   listarPersonalDeEmergencia,
   asignarPersonal,
-  quitarPersonal,
+  desasignarPersonal,
   obtenerEmergencia,
 } from "../../services/emergencias.service";
 
@@ -130,8 +130,8 @@ export default function EmergenciaPersonalPage(props) {
           const arr = Array.isArray(data?.data)
             ? data.data
             : Array.isArray(data)
-            ? data
-            : [];
+              ? data
+              : [];
           setCatalogo(arr.map(normPerson));
         } catch {
           /* silencioso */
@@ -162,17 +162,23 @@ export default function EmergenciaPersonalPage(props) {
 
   const removePersonal = async (row) => {
     const ok = await Swal.fire({
-      title: `¿Quitar a ${row.nombre}?`,
+      title: `¿Desasignar a ${row.nombre} ${row.apellido}?`,
+      text: "Se registrará en el kardex",
       icon: "warning",
       showCancelButton: true,
+      confirmButtonText: "Sí, desasignar",
+      cancelButtonText: "Cancelar",
     });
     if (!ok.isConfirmed) return;
     try {
-      await quitarPersonal(idEmergencia, row.id);
+      await desasignarPersonal(idEmergencia, row.id, {
+        observaciones: "Desasignado desde interfaz"
+      });
       await cargar();
-      Swal.fire("Listo", "Personal quitado", "success");
-    } catch {
-      Swal.fire("Error", "No se pudo quitar", "error");
+      Swal.fire("Listo", "Personal desasignado correctamente", "success");
+    } catch (err) {
+      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo desasignar";
+      Swal.fire("Error", msg, "error");
     }
   };
 

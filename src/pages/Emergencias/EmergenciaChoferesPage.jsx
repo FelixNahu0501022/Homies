@@ -117,6 +117,19 @@ export default function EmergenciaChoferesPage() {
         if (!personalSel) return Swal.fire("Valida", "Selecciona un personal", "info");
         if (!vehiculoSel) return Swal.fire("Valida", "Selecciona un vehículo", "info");
 
+        // Validación: evitar asignar mismo personal a múltiples vehículos como chofer activo
+        const yaAsignado = choferes.find(
+            (c) => c.idpersonal === personalSel.idpersonal && c.estado_turno === "ACTIVO"
+        );
+
+        if (yaAsignado) {
+            return Swal.fire(
+                "No permitido",
+                `${personalSel.nombre} ${personalSel.apellido} ya está asignado como chofer activo del vehículo ${yaAsignado.placa}. Debe finalizar ese turno primero.`,
+                "warning"
+            );
+        }
+
         try {
             await asignarChofer(idEmergencia, {
                 idPersonal: personalSel.idpersonal,
