@@ -36,8 +36,8 @@ const sameDay = (a, b) => {
   if (!a || !b) return false;
   const da = new Date(a), db = new Date(b);
   return da.getFullYear() === db.getFullYear() &&
-         da.getMonth() === db.getMonth() &&
-         da.getDate() === db.getDate();
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate();
 };
 const fmtFecha = (f) => f ? String(f).replace("T", " ").slice(0, 16) : "—";
 
@@ -165,7 +165,7 @@ export default function EmergenciaInventarioPage(props) {
       if (!sameDay(emerg?.fechahora, fechaJS)) {
         return Swal.fire(
           "Regla de coherencia",
-          `La fecha de uso debe ser el mismo día que la emergencia (${toLocalInputValue(emerg?.fechahora).slice(0,10)}).`,
+          `La fecha de uso debe ser el mismo día que la emergencia (${toLocalInputValue(emerg?.fechahora).slice(0, 10)}).`,
           "info"
         );
       }
@@ -337,10 +337,13 @@ export default function EmergenciaInventarioPage(props) {
               dadoDeBaja
                 ? "Para baja se sugiere la fecha actual"
                 : emerg
-                ? `Debe coincidir con el día de la emergencia (${toLocalInputValue(emerg?.fechahora).slice(0, 10)})`
-                : ""
+                  ? `Auto-completado con fecha de emergencia`
+                  : ""
             }
             InputLabelProps={{ shrink: true }}
+            InputProps={{
+              readOnly: !dadoDeBaja, // Solo editable si es baja
+            }}
           />
 
           <FormControlLabel

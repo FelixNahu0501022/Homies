@@ -10,7 +10,8 @@ import {
 } from "@mui/material";
 import {
   Add, Edit, Delete, Visibility,
-  LocalShipping, Person, Inventory2, Emergency, BarChart
+  LocalShipping, Person, Inventory2, Emergency, BarChart,
+  DirectionsCar, Assignment, Schedule
 } from "@mui/icons-material";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -141,6 +142,9 @@ export default function EmergenciasPage() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
         <Typography variant="h5">Emergencias</Typography>
         <Stack direction="row" spacing={1}>
+          <Button variant="outlined" startIcon={<Schedule />} onClick={() => navigate("/emergencias/reportes/horas")}>
+            Horas
+          </Button>
           <Button variant="outlined" startIcon={<BarChart />} onClick={() => navigate("/emergencias/reportes")}>
             Reportes
           </Button>
@@ -227,6 +231,16 @@ export default function EmergenciasPage() {
                       <Tooltip title="Inventario usado">
                         <IconButton onClick={() => openInventario(id)}>
                           <Inventory2 />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Choferes">
+                        <IconButton onClick={() => navigate(`/emergencias/${id}/choferes`)}>
+                          <DirectionsCar />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Kardex">
+                        <IconButton onClick={() => navigate(`/emergencias/${id}/kardex`)}>
+                          <Assignment />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Detalle">
