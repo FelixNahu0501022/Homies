@@ -11,7 +11,7 @@ import {
 import {
   Add, Edit, Delete, Visibility,
   LocalShipping, Person, Inventory2, Emergency, BarChart,
-  DirectionsCar, Assignment, Schedule
+  DirectionsCar, Assignment
 } from "@mui/icons-material";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -142,9 +142,6 @@ export default function EmergenciasPage() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
         <Typography variant="h5">Emergencias</Typography>
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" startIcon={<Schedule />} onClick={() => navigate("/emergencias/reportes/horas")}>
-            Horas
-          </Button>
           <Button variant="outlined" startIcon={<BarChart />} onClick={() => navigate("/emergencias/reportes")}>
             Reportes
           </Button>
