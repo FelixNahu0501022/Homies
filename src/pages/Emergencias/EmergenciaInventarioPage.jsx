@@ -26,8 +26,25 @@ import {
 const toLocalInputValue = (d) => {
   if (!d) return "";
   try {
-    const iso = new Date(d).toISOString();
-    return iso.slice(0, 16); // YYYY-MM-DDTHH:mm
+    const str = String(d).trim();
+    // Si ya está en formato ISO, usar directamente
+    if (str.includes('T') || str.includes('-')) {
+      return new Date(d).toISOString().slice(0, 16);
+    }
+    // Parsear formato DD/MM/YYYY HH:mm del backend
+    const match = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+    if (match) {
+      const [, day, month, year, hour, minute] = match;
+      const fecha = new Date(
+        parseInt(year),
+        parseInt(month) - 1, // mes 0-indexed
+        parseInt(day),
+        parseInt(hour),
+        parseInt(minute)
+      );
+      return fecha.toISOString().slice(0, 16);
+    }
+    return new Date(d).toISOString().slice(0, 16);
   } catch {
     return "";
   }
@@ -160,16 +177,7 @@ export default function EmergenciaInventarioPage(props) {
     if (isNaN(fechaJS.getTime())) {
       return Swal.fire("Valida", "Fecha de movimiento inválida", "info");
     }
-    if (!dadoDeBaja) {
-      // uso: mismo día que la emergencia
-      if (!sameDay(emerg?.fechahora, fechaJS)) {
-        return Swal.fire(
-          "Regla de coherencia",
-          `La fecha de uso debe ser el mismo día que la emergencia (${toLocalInputValue(emerg?.fechahora).slice(0, 10)}).`,
-          "info"
-        );
-      }
-    }
+    // Validación same-day eliminada - permite emergencias pasadas
 
     setPendientes((prev) => ([
       ...prev,
