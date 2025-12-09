@@ -18,7 +18,7 @@ import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import debounce from "lodash.debounce";
 import LayoutDashboard from "../../layouts/LayoutDashboard";
-import { listarEmergencias, eliminarEmergencia, listarTiposEmergencia } from "../../services/emergencias.service";
+import { listarEmergencias, eliminarEmergencia, listarTiposEmergencia, finalizarEmergencia } from "../../services/emergencias.service";
 
 // === Importamos los modales ===
 import EmergenciaVehiculosPage from "./EmergenciaVehiculosPage";
@@ -121,6 +121,27 @@ export default function EmergenciasPage() {
       Swal.fire("Listo", "Registro eliminado", "success");
     } catch (err) {
       const msg = err?.response?.data?.mensaje || err?.message || "No se pudo eliminar";
+      Swal.fire("Error", msg, "error");
+    }
+  };
+
+  // === Finalizar ===
+  const onFinalizar = async (e) => {
+    const ok = await Swal.fire({
+      title: "¿Finalizar emergencia?",
+      text: `Esto marcará la fecha de fin y cambiará el estado a 'finalizada'. ${e.descripcion || ""}`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sí, finalizar",
+      cancelButtonText: "Cancelar",
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      await finalizarEmergencia(getId(e));
+      await cargar();
+      Swal.fire("Listo", "Emergencia finalizada correctamente", "success");
+    } catch (err) {
+      const msg = err?.response?.data?.mensaje || err?.message || "No se pudo finalizar";
       Swal.fire("Error", msg, "error");
     }
   };
@@ -245,6 +266,13 @@ export default function EmergenciasPage() {
                           <Visibility />
                         </IconButton>
                       </Tooltip>
+                      {normEstado(e.estado) !== "finalizada" && (
+                        <Tooltip title="Finalizar">
+                          <IconButton color="success" onClick={() => onFinalizar(e)}>
+                            <CheckCircle />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Eliminar">
                         <IconButton color="error" onClick={() => onDelete(e)}>
                           <Delete />

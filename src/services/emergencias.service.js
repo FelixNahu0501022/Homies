@@ -332,3 +332,20 @@ export async function obtenerResumenHorasTodos({ fechaInicio, fechaFin } = {}) {
   });
   return data;
 }
+// Nuevas funciones
+export async function finalizarEmergencia(idEmergencia) {
+  const { data } = await api.patch(/emergencias//finalizar);
+  return data;
+}
+
+export async function obtenerHorasPersonal(idEmergencia) {
+  const { data } = await api.get(/emergencias//horas-personal);
+  return data;
+}
+
+export async function desasignarPersonal(idEmergencia, idPersonal, { observaciones } = {}) {
+  const { data } = await api.delete(/emergencias//personal/, {
+    data: { observaciones },
+  });
+  return data;
+}
