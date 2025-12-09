@@ -22,6 +22,7 @@ import {
     obtenerEmergencia,
     obtenerHorasPersonal,
 } from "../../services/emergencias.service";
+import { formatDateTime } from "../../utils/dateUtils";
 
 const tipoIcons = {
     vehiculo: "🚗",
@@ -102,19 +103,8 @@ export default function EmergenciaKardexPage() {
         return () => clearInterval(interval);
     }, [emerg, idEmergencia]);
 
-    const kardexFiltrado = kardex.filter((k) => filtros[k.tiporecurso]);
 
-    const formatFecha = (fecha) => {
-        if (!fecha) return "—";
-        const d = new Date(fecha);
-        return d.toLocaleString("es-BO", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    };
+    const kardexFiltrado = kardex.filter((k) => filtros[k.tiporecurso]);
 
     return (
         <LayoutDashboard>
@@ -217,7 +207,7 @@ export default function EmergenciaKardexPage() {
                                         <Chip label={item.accion} size="small" color={accionColors[item.accion] || "default"} />
                                     </Box>
                                     <Typography variant="caption" color="text.secondary">
-                                        {formatFecha(item.fechaaccion)}
+                                        {formatDateTime(item.fechaaccion)}
                                     </Typography>
                                 </Box>
                                 <Typography variant="subtitle1" fontWeight={600}>
