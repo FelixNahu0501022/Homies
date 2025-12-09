@@ -103,6 +103,16 @@ export default function EmergenciaKardexPage() {
         return () => clearInterval(interval);
     }, [emerg, idEmergencia]);
 
+    // Recargar todo cuando la ventana recupera el focus (usuario vuelve de otra pestaña)
+    useEffect(() => {
+        const handleFocus = () => {
+            cargar(); // Recarga kardex, resumen, horas y emergencia
+        };
+
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, [idEmergencia]);
+
 
     const kardexFiltrado = kardex.filter((k) => filtros[k.tiporecurso]);
 

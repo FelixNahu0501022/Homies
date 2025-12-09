@@ -97,6 +97,13 @@ export default function EmergenciaPersonalPage(props) {
     // eslint-disable-next-line
   }, [idEmergencia]);
 
+  // Recargar cuando la ventana recupera el focus
+  useEffect(() => {
+    const handleFocus = () => cargar();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [idEmergencia]);
+
   // ---- filtro tabla
   const applyFilter = useMemo(
     () =>
