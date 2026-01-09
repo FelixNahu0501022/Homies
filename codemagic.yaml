@@ -114,7 +114,7 @@ workflows:
             -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath ios/build \
-            -destination 'platform=iOS Simulator,name=iPhone 15'
+            -destination 'platform=iOS Simulator,name=iPhone 17'
     
     artifacts:
       - ios/build/Build/Products/Debug-iphonesimulator/*.app
