@@ -95,11 +95,17 @@ workflows:
         script: |
           npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       
+      - name: Verify Capacitor installation
+        script: |
+          npx cap --version || echo "Capacitor CLI not found, will be installed with dependencies"
+      
       - name: Build web
         script: npm run build
       
       - name: Sync iOS
-        script: npx cap sync ios
+        script: |
+          # Forzar uso de CLI local
+          node node_modules/@capacitor/cli/bin/capacitor sync ios
       
       - name: Install CocoaPods
         script: |
