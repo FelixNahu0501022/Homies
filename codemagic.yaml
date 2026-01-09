@@ -109,7 +109,7 @@ workflows:
       
       - name: Build for simulator (using Swift Package Manager)
         script: |
-          xcodebuild -workspace "ios/App/App.xcworkspace" \
+          xcodebuild -project "ios/App/App.xcodeproj" \
             -scheme "App" \
             -configuration Debug \
             -sdk iphonesimulator \
