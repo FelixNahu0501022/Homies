@@ -109,11 +109,12 @@ workflows:
       
       - name: Build for simulator (using Swift Package Manager)
         script: |
-          xcodebuild -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
+          xcodebuild -workspace "ios/App/App.xcworkspace" \
+            -scheme "App" \
             -configuration Debug \
             -sdk iphonesimulator \
-            -derivedDataPath ios/build
+            -derivedDataPath ios/build \
+            -destination 'platform=iOS Simulator,name=iPhone 15'
     
     artifacts:
       - ios/build/Build/Products/Debug-iphonesimulator/*.app
