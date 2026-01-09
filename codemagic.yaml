@@ -107,7 +107,7 @@ workflows:
           npm run build
           cap sync ios
       
-      - name: Install CocoaPods
+      - name: Install CocoaPods dependencies
         script: |
           cd ios/App
           pod install
