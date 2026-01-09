@@ -107,12 +107,7 @@ workflows:
           npm run build
           cap sync ios
       
-      - name: Install CocoaPods dependencies
-        script: |
-          cd ios/App
-          pod install
-      
-      - name: Build for simulator
+      - name: Build for simulator (using Swift Package Manager)
         script: |
           xcodebuild -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
