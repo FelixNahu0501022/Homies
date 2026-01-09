@@ -1,204 +1,107 @@
-// src/services/usuarios.service.js
-import api from "./axios";
+import api from './axios';
 
-/**
- * GET /usuarios?page&limit&search
- * Backend responde: { data, total, page, limit }
- */
-export async function listarUsuarios({ page = 1, limit = 10, search = "" } = {}) {
-  try {
-    const { data } = await api.get("/usuarios", { params: { page, limit, search } });
-    return data; // { data, total, page, limit }
-  } catch (error) {
-    throw parseError(error);
-  }
-}
+const USUARIOS_URL = '/usuarios';
 
-/**
- * PATCH /usuarios/:id/activar  |  PATCH /usuarios/:id/desactivar
- */
-export async function cambiarEstadoUsuario(id, activar) {
-  try {
-    const url = activar ? `/usuarios/${id}/activar` : `/usuarios/${id}/desactivar`;
-    const { data } = await api.patch(url);
-    return data;
-  } catch (error) {
-    throw parseError(error);
-  }
-}
+const usuariosService = {
+    /**
+     * Obtener lista de usuarios
+     */
+    getUsuarios: async () => {
+        try {
+            const response = await api.get(USUARIOS_URL);
+            return response.data;
+        } catch (error) {
+            console.error('Error al obtener usuarios:', error);
+            throw error;
+        }
+    },
 
-/**
- * GET /usuarios/:id
- */
-export async function obtenerUsuario(id) {
-  try {
-    const { data } = await api.get(`/usuarios/${id}`);
-    return data;
-  } catch (error) {
-    throw parseError(error);
-  }
-}
+    /**
+     * Crear nuevo usuario
+     * @param {Object} data - { miembro_id, nombre_usuario, password, roles: [id] }
+     */
+    createUsuario: async (data) => {
+        try {
+            const response = await api.post(USUARIOS_URL, data);
+            return response.data;
+        } catch (error) {
+            console.error('Error al crear usuario:', error);
+            throw error;
+        }
+    },
 
-/**
- * POST /usuarios
- * Body esperado (nuevo): { nombreUsuario, contraseña, roles: number[], idPersonal }
- * Compatibilidad: si no mandas roles, aún puedes mandar idRol.
- */
-export async function crearUsuario(payload) {
-  try {
-    const body = {
-      nombreUsuario: payload.nombreUsuario,
-      // admite diferentes nombres desde la UI
-      contraseña: payload.contraseña ?? payload.contrasena ?? payload.password,
-      idPersonal: payload.idPersonal,
-    };
+    /**
+     * Cambiar contraseña
+     * @param {number|string} id 
+     * @param {Object} data - { password_actual, password_nueva }
+     */
+    updatePassword: async (id, data) => {
+        try {
+            const response = await api.patch(`${USUARIOS_URL}/${id}/password`, data);
+            return response.data;
+        } catch (error) {
+            console.error('Error al cambiar contraseña:', error);
+            throw error;
+        }
+    },
 
-    if (Array.isArray(payload.roles) && payload.roles.length > 0) {
-      body.roles = payload.roles.map(Number); // 👈 multi-rol
-    } else if (payload.idRol != null) {
-      body.idRol = Number(payload.idRol);     // 👈 legacy
+    /**
+     * Obtener usuario por ID
+     * @param {number} id
+     */
+    getUsuario: async (id) => {
+        try {
+            const response = await api.get(`${USUARIOS_URL}/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error al obtener usuario:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Actualizar usuario (Roles, Estado, Username)
+     * @param {number} id
+     * @param {Object} data
+     */
+    updateUsuario: async (id, data) => {
+        try {
+            const response = await api.put(`${USUARIOS_URL}/${id}`, data);
+            return response.data;
+        } catch (error) {
+            console.error('Error al actualizar usuario:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Remover un rol de un usuario
+     * DELETE /api/usuarios/:id/roles/:rolId
+     */
+    removeRol: async (userId, rolId) => {
+        try {
+            const response = await api.delete(`${USUARIOS_URL}/${userId}/roles/${rolId}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error al remover rol:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Asignar rol a usuario (Inferido: Si existe DELETE, debería existir POST)
+     * POST /api/usuarios/:id/roles
+     * Body: { rolId: number }
+     */
+    addRol: async (userId, rolId) => {
+        try {
+            const response = await api.post(`${USUARIOS_URL}/${userId}/roles`, { rolId });
+            return response.data;
+        } catch (error) {
+            console.error('Error al asignar rol:', error);
+            throw error;
+        }
     }
+};
 
-    const { data } = await api.post("/usuarios", body);
-    return data;
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-/**
- * PATCH /usuarios/:id
- * Body (nuevo): { nombreUsuario, roles: number[], idPersonal }
- * Compatibilidad: si no mandas roles, puedes mandar idRol.
- */
-export async function editarUsuario(id, payload) {
-  try {
-    const body = {
-      nombreUsuario: payload.nombreUsuario,
-      idPersonal: payload.idPersonal,
-    };
-
-    if (Array.isArray(payload.roles) && payload.roles.length > 0) {
-      body.roles = payload.roles.map(Number); // 👈 multi-rol
-    } else if (payload.idRol != null) {
-      body.idRol = Number(payload.idRol);     // 👈 legacy
-    }
-
-    const { data } = await api.patch(`/usuarios/${id}`, body);
-    return data;
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-/** Helper: normaliza mensajes de error para la UI */
-function parseError(error) {
-  const msg =
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    "Error de red";
-  const e = new Error(msg);
-  e.status = error?.response?.status || 0;
-  e.data = error?.response?.data;
-  return e;
-}
-
-
-// --- REPORTES (Usuarios) ---
-
-export async function repResumenUsuarios() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/resumen");
-    return data; // {total_usuarios, activos, inactivos, usuarios_con_roles, usuarios_sin_roles, roles_distintos}
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repUsuariosPorRol() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/usuarios-por-rol");
-    return data; // [{idrol, rol_nombre, total_usuarios}]
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repUsuariosDeRol(idRol, { page = 1, limit = 10, search = "" } = {}) {
-  try {
-    const { data } = await api.get(`/usuarios/reportes/usuarios-de-rol/${idRol}`, {
-      params: { page, limit, search }
-    });
-    return data; // { data, total, page, limit }
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repUsuariosSinRol({ page = 1, limit = 10, search = "" } = {}) {
-  try {
-    const { data } = await api.get("/usuarios/reportes/usuarios-sin-rol", {
-      params: { page, limit, search }
-    });
-    return data; // { data, total, page, limit }
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repUsuariosMultiRol({ page = 1, limit = 10, search = "" } = {}) {
-  try {
-    const { data } = await api.get("/usuarios/reportes/usuarios-multi-rol", {
-      params: { page, limit, search }
-    });
-    return data; // { data, total, page, limit }
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repRolesSinUsuarios() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/roles-sin-usuarios");
-    return data; // [{idrol, nombre, descripcion}]
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repRolesConDetalle() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/roles-con-detalle");
-    return data; // [{idrol, rol_nombre, descripcion, total_usuarios, usuarios_resumen: [{idusuario, nombreusuario}]}]
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repPermisosDeRol(idRol) {
-  try {
-    const { data } = await api.get(`/usuarios/reportes/permisos/rol/${idRol}`);
-    return data; // [{idpermiso, nombre, descripcion}]
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repPermisosMatriz() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/permisos/matriz");
-    return data; // {roles:[], permisos:[], asignaciones:[]}
-  } catch (error) {
-    throw parseError(error);
-  }
-}
-
-export async function repPermisosSinRol() {
-  try {
-    const { data } = await api.get("/usuarios/reportes/permisos-sin-rol");
-    return data; // [{idpermiso, nombre, descripcion}]
-  } catch (error) {
-    throw parseError(error);
-  }
-}
+export default usuariosService;

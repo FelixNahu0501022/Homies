@@ -14,13 +14,15 @@ import {
   Slide,
   useMediaQuery,
   useTheme,
+  Chip,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import AccountCircle from "@mui/icons-material/AccountCircle";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
 import { useState, forwardRef } from "react";
-import escudo from "../assets/img/EscudoSantaBarbara.jpg";
+import { useNavigate } from "react-router-dom";
+import authService from "../services/auth.service";
 
 // Animación del diálogo
 const Transition = forwardRef(function Transition(props, ref) {
@@ -29,7 +31,8 @@ const Transition = forwardRef(function Transition(props, ref) {
 
 const Topbar = () => {
   const { toggleSidebar } = useSidebar();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -49,9 +52,20 @@ const Topbar = () => {
     setConfirmOpen(true);
   };
 
-  const handleConfirmLogout = () => {
+  const handleConfirmLogout = async () => {
     setConfirmOpen(false);
-    logout();
+
+    try {
+      // Intentar cerrar sesión en el backend
+      await authService.logout();
+    } catch (error) {
+      console.error("Error al cerrar sesión en backend:", error);
+      // Continuar con logout local incluso si falla el backend
+    } finally {
+      // Limpiar sesión local y redirigir
+      logout();
+      navigate("/");
+    }
   };
 
   return (
@@ -60,8 +74,10 @@ const Topbar = () => {
         position="fixed"
         sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          background:
-            "linear-gradient(90deg, #003366 0%, #0055aa 100%)",
+          background: `linear-gradient(90deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
+          color: "white",
+          // Safe area para notches/barras de estado en todos los dispositivos
+          paddingTop: { xs: 'env(safe-area-inset-top, 0px)', sm: 0 },
         }}
       >
         <Toolbar
@@ -69,6 +85,7 @@ const Topbar = () => {
             display: "flex",
             justifyContent: "space-between",
             px: { xs: 1, sm: 2, md: 3 },
+            minHeight: { xs: 56, sm: 64 },
           }}
         >
           {/* Botón del menú lateral */}
@@ -91,12 +108,11 @@ const Topbar = () => {
             }}
           >
             <img
-              src={escudo}
-              alt="Logo Santa Bárbara"
+              src="/logo-homies.png"
+              alt="HOMIES"
               style={{
                 height: isSmallScreen ? 32 : 42,
                 marginRight: isSmallScreen ? 6 : 10,
-                borderRadius: "50%",
               }}
             />
             {!isSmallScreen && (
@@ -109,13 +125,25 @@ const Topbar = () => {
                   textOverflow: "ellipsis",
                 }}
               >
-                2a Compañía de Bomberos Santa Bárbara
+                Estación HOMIES
               </Typography>
             )}
           </Box>
 
-          {/* Menú de usuario */}
-          <Box>
+          {/* Información de usuario + Menú */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {user && !isSmallScreen && (
+              <Box sx={{ textAlign: 'right', mr: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+                  {user.miembro_nombre || user.nombre_usuario}
+                </Typography>
+                {user.roles && user.roles.length > 0 && (
+                  <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                    {user.roles.join(", ")}
+                  </Typography>
+                )}
+              </Box>
+            )}
             <IconButton color="inherit" onClick={handleMenu}>
               <AccountCircle fontSize={isSmallScreen ? "medium" : "large"} />
             </IconButton>
@@ -127,17 +155,29 @@ const Topbar = () => {
                 sx: {
                   mt: 1.5,
                   borderRadius: 2,
-                  minWidth: 160,
+                  minWidth: 200,
                 },
               }}
             >
-              <MenuItem onClick={handleLogoutClick}>Cerrar sesión</MenuItem>
+              {user && (
+                <Box sx={{ px: 2, py: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    {user.miembro_nombre || user.nombre_usuario}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {user.nombre_usuario}
+                  </Typography>
+                </Box>
+              )}
+              <MenuItem onClick={handleLogoutClick} sx={{ mt: 1 }}>
+                Cerrar sesión
+              </MenuItem>
             </Menu>
           </Box>
         </Toolbar>
       </AppBar>
 
-      {/* 🧩 Diálogo de confirmación */}
+      {/* Diálogo de confirmación de logout */}
       <Dialog
         open={confirmOpen}
         TransitionComponent={Transition}

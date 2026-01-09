@@ -33,16 +33,46 @@ export function nowLocalInputValue() {
 export function formatDateTime(dateInput) {
     if (!dateInput) return "—";
 
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return "Fecha inválida";
+    let date;
+    const str = String(dateInput);
 
-    return new Intl.DateTimeFormat('es-ES', {
+    // Si ya es Date object válido
+    if (dateInput instanceof Date) {
+        date = dateInput;
+    }
+    // Si es ISO format (YYYY-MM-DD o con T/Z)
+    else if (str.includes('T') || str.includes('Z') || str.match(/^\d{4}-\d{2}-\d{2}/)) {
+        date = new Date(dateInput);
+    }
+    // Parsear formato DD/MM/YYYY HH:mm del backend  
+    else {
+        const match = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+        if (match) {
+            const [, day, month, year, hour = 0, minute = 0] = match;
+            date = new Date(
+                parseInt(year),
+                parseInt(month) - 1, // mes es 0-indexed
+                parseInt(day),
+                parseInt(hour),
+                parseInt(minute)
+            );
+            console.log('📅 [formatDateTime] Parseado DD/MM/YYYY:', { input: dateInput, output: date.toLocaleString('es-ES') });
+        } else {
+            // Fallback: intentar parsear directamente (puede fallar con DD/MM/YYYY)
+            date = new Date(dateInput);
+        }
+    }
+
+    if (!date || isNaN(date.getTime())) return "Fecha inválida";
+
+    // ✅ CLAVE: Agregar timeZone: 'America/La_Paz' para forzar conversión correcta desde UTC
+    return new Intl.DateTimeFormat('es-BO', {
+        timeZone: 'America/La_Paz', // Zona horaria de Bolivia (UTC-4)
         day: '2-digit',
         month: 'short',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: true
     }).format(date);
 }
 

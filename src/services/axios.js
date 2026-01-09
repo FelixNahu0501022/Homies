@@ -1,9 +1,14 @@
 // src/services/axios.js
 import axios from 'axios';
 
+// CONFIGURACIÓN DE PRODUCCIÓN
+const BASE_URL = 'https://api.foxtrotalfa.org/api';
+
+console.log('🔗 Axios configurado con baseURL:', BASE_URL);
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api', // backend local
-  withCredentials: true,
+  baseURL: BASE_URL,
+  withCredentials: false, // Desactivado para evitar problemas de CORS con *
   timeout: 15000,
 });
 
@@ -11,7 +16,7 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${token} `;
   }
   return config;
 });

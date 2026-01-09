@@ -29,3 +29,18 @@ dist/
 *.njsproj
 *.sln
 *.sw?
+
+# iOS
+ios/build/
+ios/App/Pods/
+ios/App/Podfile.lock
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.mobileprovision
+*.p12
+*.cer
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/

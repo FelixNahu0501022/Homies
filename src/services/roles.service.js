@@ -1,26 +1,44 @@
-import api from "./axios";
+import api from './axios';
 
-export async function listarRoles() {
-  const { data } = await api.get("/roles"); // sin paginación en backend
-  return data; // [{ idrol, nombre, descripcion }]
-}
+const ROLES_URL = '/roles';
+const PERMISOS_URL = '/permisos';
 
-export async function obtenerRol(id) {
-  const { data } = await api.get(`/roles/${id}`);
-  return data;
-}
+const rolesService = {
+    /**
+     * Obtener lista de roles con permisos
+     */
+    getRoles: async () => {
+        try {
+            const response = await api.get(ROLES_URL);
+            return response.data;
+        } catch (error) {
+            console.error('Error al obtener roles:', error);
+            throw error;
+        }
+    },
 
-export async function crearRol(payload) {
-  const { data } = await api.post("/roles", payload); // { nombre, descripcion }
-  return data;
-}
+    /**
+     * Obtener todos los permisos disponibles
+     */
+    getPermisos: async () => {
+        try {
+            const response = await api.get(PERMISOS_URL);
+            return response.data;
+        } catch (error) {
+            console.error('Error al obtener permisos:', error);
+            throw error;
+        }
+    },
 
-export async function editarRol(id, payload) {
-  const { data } = await api.patch(`/roles/${id}`, payload);
-  return data;
-}
+    updateRole: async (id, data) => {
+        try {
+            const response = await api.put(`${ROLES_URL}/${id}`, data);
+            return response.data;
+        } catch (error) {
+            console.error('Error al actualizar role:', error);
+            throw error;
+        }
+    }
+};
 
-export async function eliminarRol(id) {
-  const { data } = await api.delete(`/roles/${id}`);
-  return data; // { mensaje, eliminado }
-}
+export default rolesService;
