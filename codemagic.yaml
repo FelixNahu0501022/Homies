@@ -82,7 +82,8 @@ workflows:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
       node: 18
-      xcode: 15.0
+      xcode: latest
+      cocoapods: default
     
     scripts:
       - name: Install dependencies
